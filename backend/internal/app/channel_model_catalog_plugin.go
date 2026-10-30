@@ -9,6 +9,7 @@ import (
 
 	"yingce/backend/internal/provider"
 	"yingce/backend/internal/provider/bailian"
+	"yingce/backend/internal/provider/runninghub"
 )
 
 var pluginsInitOnce sync.Once
@@ -16,6 +17,7 @@ var pluginsInitOnce sync.Once
 func initModelCatalogPlugins() {
 	pluginsInitOnce.Do(func() {
 		provider.Register(bailian.New())
+		provider.Register(runninghub.NewCatalog())
 	})
 }
 

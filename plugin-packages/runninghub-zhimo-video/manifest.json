@@ -1,0 +1,158 @@
+{
+  "apiVersion": "yingce.plugin/v2",
+  "id": "runninghub-zhimo-video",
+  "name": "RunningHub 智墨视频",
+  "version": "0.1.0",
+  "author": "智墨",
+  "description": "通过 RunningHub Workflow 提供视频生成能力。",
+  "documentation": "# RunningHub 智墨视频\n\n通过 RunningHub v2 Workflow API 提供视频生成能力。当前绑定工作流 `2112923637551575042`，API Key 由管理员配置。\n\n---\n\n# RunningHub 智墨视频接口\n\n创建：`POST /openapi/v2/run/workflow/{{model}}`；查询：`POST /openapi/v2/query`。请求映射提示词到节点 `263.text`、时长到 `259.value`、画幅和分辨率到 `252`。响应读取 `taskId`、`status`、`results[].url`、`errorMessage` 和 `usage`；临时结果由宿主下载，`usage.taskCostTime` 用于运行时间计费。\n\n<!-- YINGCE_MANIFEST_CONTRACT_START -->\n## Manifest 完整接口定义\n\n以下 JSON 与插件包内 `manifest.json` 逐字段一致；documentation 使用占位文本避免递归。\n\n```json\n{\n  \"apiVersion\": \"yingce.plugin/v2\",\n  \"id\": \"runninghub-zhimo-video\",\n  \"name\": \"RunningHub 智墨视频\",\n  \"version\": \"0.1.0\",\n  \"author\": \"智墨\",\n  \"description\": \"通过 RunningHub Workflow 提供视频生成能力。\",\n  \"documentation\": \"<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>\",\n  \"permissions\": [\n    \"generation.run\",\n    \"media.read\"\n  ],\n  \"configuration\": {\n    \"fields\": [\n      {\n        \"name\": \"apiKey\",\n        \"type\": \"secret\",\n        \"label\": \"RunningHub API Key\",\n        \"required\": true\n      }\n    ]\n  },\n  \"contributes\": {\n    \"providers\": [\n      {\n        \"id\": \"runninghub-workflow-video\",\n        \"label\": \"RunningHub 智墨视频\",\n        \"capabilities\": [\n          \"video\"\n        ],\n        \"scopes\": [\n          \"admin.system-channel\",\n          \"user.custom-channel\",\n          \"canvas\",\n          \"creation\",\n          \"agent\"\n        ],\n        \"baseUrl\": \"https://www.runninghub.ai\",\n        \"auth\": {\n          \"type\": \"bearer\",\n          \"field\": \"apiKey\"\n        },\n        \"parameters\": [\n          {\n            \"name\": \"model\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"mapping\": \"workflowId\",\n            \"description\": \"RunningHub Workflow ID。\"\n          },\n          {\n            \"name\": \"prompt\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"mapping\": \"node 263 text\",\n            \"description\": \"视频提示词。\"\n          },\n          {\n            \"name\": \"duration\",\n            \"type\": \"integer\",\n            \"required\": true,\n            \"mapping\": \"node 259 value\",\n            \"description\": \"视频时长秒数。\"\n          },\n          {\n            \"name\": \"aspectRatio\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"mapping\": \"node 252 aspect_ratio\",\n            \"description\": \"视频画幅。\"\n          },\n          {\n            \"name\": \"resolution\",\n            \"type\": \"number\",\n            \"required\": true,\n            \"mapping\": \"node 252 megapixels\",\n            \"description\": \"megapixels 分辨率。\"\n          }\n        ],\n        \"create\": {\n          \"method\": \"POST\",\n          \"path\": \"/openapi/v2/run/workflow/{{model}}\",\n          \"contentType\": \"application/json\",\n          \"body\": {\n            \"addMetadata\": false,\n            \"nodeInfoList\": [\n              {\n                \"nodeId\": \"263\",\n                \"fieldName\": \"text\",\n                \"fieldValue\": {\n                  \"$ref\": \"request.prompt\"\n                }\n              },\n              {\n                \"nodeId\": \"259\",\n                \"fieldName\": \"value\",\n                \"fieldValue\": {\n                  \"$ref\": \"request.duration\"\n                }\n              },\n              {\n                \"nodeId\": \"252\",\n                \"fieldName\": \"aspect_ratio\",\n                \"fieldValue\": {\n                  \"$ref\": \"request.aspectRatio\"\n                }\n              },\n              {\n                \"nodeId\": \"252\",\n                \"fieldName\": \"megapixels\",\n                \"fieldValue\": {\n                  \"$ref\": \"request.resolution\"\n                }\n              }\n            ],\n            \"instanceType\": \"default\",\n            \"usePersonalQueue\": false\n          }\n        },\n        \"poll\": {\n          \"method\": \"POST\",\n          \"path\": \"/openapi/v2/query\",\n          \"contentType\": \"application/json\",\n          \"body\": {\n            \"taskId\": {\n              \"$ref\": \"taskId\"\n            }\n          }\n        },\n        \"response\": {\n          \"taskId\": {\n            \"$ref\": \"response.taskId\"\n          },\n          \"status\": {\n            \"$ref\": \"response.status\"\n          },\n          \"message\": {\n            \"$coalesce\": [\n              {\n                \"$ref\": \"response.errorMessage\"\n              },\n              {\n                \"$ref\": \"response.errorCode\"\n              }\n            ]\n          },\n          \"videos\": {\n            \"$ref\": \"response.results\"\n          },\n          \"usage\": {\n            \"$ref\": \"response.usage\"\n          },\n          \"resultEphemeral\": true\n        }\n      }\n    ]\n  }\n}\n```\n<!-- YINGCE_MANIFEST_CONTRACT_END -->",
+  "permissions": [
+    "generation.run",
+    "media.read"
+  ],
+  "configuration": {
+    "fields": [
+      {
+        "name": "apiKey",
+        "type": "secret",
+        "label": "RunningHub API Key",
+        "required": true
+      }
+    ]
+  },
+  "contributes": {
+    "providers": [
+      {
+        "id": "runninghub-workflow-video",
+        "label": "RunningHub 智墨视频",
+        "capabilities": [
+          "video"
+        ],
+        "scopes": [
+          "admin.system-channel",
+          "user.custom-channel",
+          "canvas",
+          "creation",
+          "agent"
+        ],
+        "baseUrl": "https://www.runninghub.ai",
+        "auth": {
+          "type": "bearer",
+          "field": "apiKey"
+        },
+        "parameters": [
+          {
+            "name": "model",
+            "type": "string",
+            "required": true,
+            "mapping": "workflowId",
+            "description": "RunningHub Workflow ID。"
+          },
+          {
+            "name": "prompt",
+            "type": "string",
+            "required": true,
+            "mapping": "node 263 text",
+            "description": "视频提示词。"
+          },
+          {
+            "name": "duration",
+            "type": "integer",
+            "required": true,
+            "mapping": "node 259 value",
+            "description": "视频时长秒数。"
+          },
+          {
+            "name": "aspectRatio",
+            "type": "string",
+            "required": true,
+            "mapping": "node 252 aspect_ratio",
+            "description": "视频画幅。"
+          },
+          {
+            "name": "resolution",
+            "type": "number",
+            "required": true,
+            "mapping": "node 252 megapixels",
+            "description": "megapixels 分辨率。"
+          }
+        ],
+        "create": {
+          "method": "POST",
+          "path": "/openapi/v2/run/workflow/{{model}}",
+          "contentType": "application/json",
+          "body": {
+            "addMetadata": false,
+            "nodeInfoList": [
+              {
+                "nodeId": "263",
+                "fieldName": "text",
+                "fieldValue": {
+                  "$ref": "request.prompt"
+                }
+              },
+              {
+                "nodeId": "259",
+                "fieldName": "value",
+                "fieldValue": {
+                  "$ref": "request.duration"
+                }
+              },
+              {
+                "nodeId": "252",
+                "fieldName": "aspect_ratio",
+                "fieldValue": {
+                  "$ref": "request.aspectRatio"
+                }
+              },
+              {
+                "nodeId": "252",
+                "fieldName": "megapixels",
+                "fieldValue": {
+                  "$ref": "request.resolution"
+                }
+              }
+            ],
+            "instanceType": "default",
+            "usePersonalQueue": false
+          }
+        },
+        "poll": {
+          "method": "POST",
+          "path": "/openapi/v2/query",
+          "contentType": "application/json",
+          "body": {
+            "taskId": {
+              "$ref": "taskId"
+            }
+          }
+        },
+        "response": {
+          "taskId": {
+            "$ref": "response.taskId"
+          },
+          "status": {
+            "$ref": "response.status"
+          },
+          "message": {
+            "$coalesce": [
+              {
+                "$ref": "response.errorMessage"
+              },
+              {
+                "$ref": "response.errorCode"
+              }
+            ]
+          },
+          "videos": {
+            "$ref": "response.results"
+          },
+          "usage": {
+            "$ref": "response.usage"
+          },
+          "resultEphemeral": true
+        }
+      }
+    ]
+  }
+}

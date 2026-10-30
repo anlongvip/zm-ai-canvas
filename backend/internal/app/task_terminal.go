@@ -248,6 +248,13 @@ func (c *taskTerminalCoordinator) handleSuccessWithSettlement(task *model.Task, 
 		}
 	}
 	settleBilling := func() error {
+		if runtime, ok := c.outputs.(interface {
+			SettleRunningHubRuntimeBilling(model.Task, string) (bool, error)
+		}); ok && completedTask != nil && capabilityFromTaskType(task.Type) == "video" {
+			if handled, err := runtime.SettleRunningHubRuntimeBilling(*completedTask, ""); handled || err != nil {
+				return err
+			}
+		}
 		// 视频处理（画质增强等）按秒订单按实际输出时长结算；拿不到时长时返回错误进入待核对。
 		if processing, ok := c.outputs.(videoProcessingTaskSettlement); ok && completedTask != nil && capabilityFromTaskType(task.Type) == "video" {
 			if handled, err := processing.settleVideoProcessingBilling(*completedTask, ""); handled || err != nil {

@@ -100,6 +100,9 @@ func (s *Service) recordWorkflowProviderRequest(ctx context.Context, requestID s
 }
 
 func (s *Service) runRunningHubWorkflow(ctx context.Context, input canvasGenerationInput) (map[string]interface{}, error) {
+	if strings.TrimSpace(input.Config.ChannelID) != "" && input.Mode == "video" {
+		return s.runRunningHubSystemVideo(ctx, input)
+	}
 	root := runningHubRootURL(input.Config.BaseURL)
 	apiKey := runningHubAPIKey(input.Config)
 	if resumed := resumedProviderRequestID(ctx); resumed != "" {

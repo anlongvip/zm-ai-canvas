@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
-
+import { protocolForModelCatalog } from "@/lib/model-protocols";
 import { modelProtocolSupportsTokenBilling } from "../src/lib/model-protocols";
+
+describe("model catalog protocol mapping", () => {
+    test("maps the trusted RunningHub video endpoint", () => {
+        expect(protocolForModelCatalog(["runninghub-workflow-video"])).toBe("runninghub-workflow-video");
+    });
+
+    test("does not invent a protocol for unknown endpoints", () => {
+        expect(protocolForModelCatalog(["unknown-video-endpoint"])).toBeUndefined();
+    });
+});
 
 describe("model protocol Token billing", () => {
     test("supports text and every video protocol", () => {

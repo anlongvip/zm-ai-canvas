@@ -22,9 +22,12 @@ export function modelProtocolSupportsTokenBilling(capability?: string, _protocol
     return capability === "text" || capability === "video";
 }
 
-export function protocolForModelCatalog(_endpointTypes: string[] = []): ModelProtocol | undefined {
-    // A provider catalog cannot invent a protocol ID. The channel's selected
-    // plugin or an explicit model configuration must supply it.
+export function protocolForModelCatalog(endpointTypes: string[] = []): ModelProtocol | undefined {
+    // Endpoint types are explicit protocol IDs published by trusted provider
+    // catalog plugins. Keep the mapping narrow so a vendor catalog cannot
+    // invent arbitrary execution protocols.
+    const known = new Set(endpointTypes.map((value) => String(value).trim()));
+    if (known.has("runninghub-workflow-video")) return "runninghub-workflow-video";
     return undefined;
 }
 export function modelProtocolSummary(value: string | undefined, definitions: ModelProtocolDefinition[] = []) { const protocol = modelProtocolDefinition(value, definitions); return protocol ? [protocol.create, protocol.contentType, protocol.poll, protocol.media].filter(Boolean).join(" · ") : "当前协议未安装或尚未选择。"; }
