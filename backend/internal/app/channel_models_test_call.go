@@ -126,16 +126,7 @@ func (s *Service) TestAdminChannelModel(ctx context.Context, actor *model.User, 
 	})
 	testCtx = withProtocolRegistry(testCtx, s.protocolRegistry())
 	startedAt := time.Now()
-	switch capability {
-	case "text":
-		_, err = runTextTask(testCtx, input)
-	case "image":
-		_, err = runImageTask(testCtx, input)
-	case "video":
-		_, err = runVideoTask(testCtx, input)
-	case "audio":
-		_, err = runAudioTask(testCtx, input)
-	}
+	_, err = s.runAdminChannelModelTestTask(testCtx, input)
 	if err != nil {
 		status := http.StatusBadGateway
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -144,13 +135,30 @@ func (s *Service) TestAdminChannelModel(ctx context.Context, actor *model.User, 
 		message := "模型测试失败：" + providerUserFacingErrorMessage(err)
 		var upstream providerHTTPError
 		if errors.As(err, &upstream) && isRunningHubInterface(string(protocol)) {
-			message += fmt.Sprintf("；RunningHub 上游状态：%d；原始响应：%s", upstream.StatusCode, sanitizeProviderDiagnostic(upstream.Body))
-		} else if isRunningHubInterface(string(protocol)) {
-			message += "；RunningHub 诊断：" + sanitizeProviderDiagnostic(err.Error())
+			message += fmt.Sprintf("；RunningHub 上游状态：%d", upstream.StatusCode)
 		}
 		return nil, WrapAppError(status, message, err)
 	}
 	return &AdminChannelModelTestResult{DurationMs: time.Since(startedAt).Milliseconds()}, nil
+}
+
+// 工作流协议与画布生成使用同一入口，不能落入通用 /videos 等接口。
+func (s *Service) runAdminChannelModelTestTask(ctx context.Context, input canvasGenerationInput) (map[string]interface{}, error) {
+	if isWorkflowProviderInterface(input.Config.InterfaceType) {
+		return s.runWorkflowProviderTask(ctx, input)
+	}
+	switch input.Mode {
+	case "text":
+		return runTextTask(ctx, input)
+	case "image":
+		return runImageTask(ctx, input)
+	case "video":
+		return runVideoTask(ctx, input)
+	case "audio":
+		return runAudioTask(ctx, input)
+	default:
+		return nil, errors.New("不支持的模型测试能力")
+	}
 }
 
 // 模型测试必须使用当前模型声明的默认参数，避免固定分辨率 SKU 被通用 1K 测试值误伤。

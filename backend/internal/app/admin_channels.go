@@ -66,7 +66,7 @@ func (s *Service) AdminSystemChannelPage(actor *model.User, query AdminListQuery
 		if itemErr != nil {
 			return nil, itemErr
 		}
-		result = append(result, publicChannel(channel, true, items))
+		result = append(result, adminChannelProjection(channel, items))
 	}
 	return &AdminChannelPage{Channels: result, Total: total, Page: page, Limit: limit}, nil
 }
@@ -107,7 +107,7 @@ func (s *Service) CreateSystemChannel(actor *model.User, req ChannelRequest) (*P
 	if err != nil {
 		return nil, err
 	}
-	public := publicChannel(channel, true, items)
+	public := adminChannelProjection(channel, items)
 	return &public, nil
 }
 
@@ -182,7 +182,7 @@ func (s *Service) DuplicateSystemChannel(actor *model.User, id string) (*PublicM
 	if err != nil {
 		return nil, err
 	}
-	public := publicChannel(channel, true, items)
+	public := adminChannelProjection(channel, items)
 	return &public, nil
 }
 
@@ -244,8 +244,16 @@ func (s *Service) UpdateSystemChannel(actor *model.User, id string, req ChannelR
 	if err != nil {
 		return nil, err
 	}
-	public := publicChannel(next, true, items)
+	public := adminChannelProjection(next, items)
 	return &public, nil
+}
+
+// 仅管理接口使用真实上游地址；密钥始终通过 HasAPIKey 表示是否已配置。
+func adminChannelProjection(channel model.ModelChannel, items []model.ChannelModel) PublicModelChannel {
+	result := publicChannel(channel, true, items)
+	result.BaseURL = channel.BaseURL
+	result.APIKey = ""
+	return result
 }
 
 func (s *Service) encryptSystemChannelSecrets(channel *model.ModelChannel) error {

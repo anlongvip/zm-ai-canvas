@@ -28,7 +28,7 @@ func (s *Service) updateChannelPresentation(id string, req ChannelRequest) (*Pub
 	if err != nil {
 		return nil, err
 	}
-	public := publicChannel(*channel, true, items)
+	public := adminChannelProjection(*channel, items)
 	return &public, nil
 }
 

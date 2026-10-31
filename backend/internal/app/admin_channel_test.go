@@ -258,6 +258,18 @@ func TestChannelFromRequestClearsProxyURL(t *testing.T) {
 	}
 }
 
+func TestAdminChannelProjectionReturnsEditableAddressWithoutCredentials(t *testing.T) {
+	channel := model.ModelChannel{ID: "system-1", Scope: model.ChannelScopeSystem, BaseURL: "https://example.com/v1", APIKey: "encrypted-key", SecretKey: "encrypted-secret"}
+	view := adminChannelProjection(channel, nil)
+	if view.BaseURL != channel.BaseURL || view.APIKey != "" || !view.HasAPIKey || !view.HasSecretKey {
+		t.Fatal("admin projection must preserve editable address and only credential presence")
+	}
+	public := publicChannel(channel, true, nil)
+	if public.BaseURL != "/api/ai/system/system-1" || public.APIKey != "system" {
+		t.Fatal("generation projection must retain the authenticated relay")
+	}
+}
+
 func TestPublicChannelOnlyReturnsSystemHeadersAndProxyToAdmin(t *testing.T) {
 	channel := model.ModelChannel{ID: "system-1", Scope: model.ChannelScopeSystem, BaseURL: "https://example.com/v1", HeadersJSON: `[{"name":"X-Gateway-Tenant","value":"tenant-a"}]`, ProxyURL: "socks5://user:secret@127.0.0.1:1080"}
 	adminView := publicChannel(channel, true, nil)

@@ -120,7 +120,7 @@ func runningHubSystemJSON(ctx context.Context, config providerConfig, endpoint s
 		return err
 	}
 	if err := json.Unmarshal(data, target); err != nil {
-		return fmt.Errorf("RunningHub 响应解析失败：%s：%w", sanitizeProviderDiagnostic(string(data)), err)
+		return fmt.Errorf("RunningHub 响应解析失败：%w", err)
 	}
 	return nil
 }

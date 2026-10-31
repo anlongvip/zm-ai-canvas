@@ -42,7 +42,7 @@ func validateWorkflowProviderConfig(mode string, config providerConfig) error {
 	}
 	if isRunningHubInterface(config.InterfaceType) {
 		if runningHubAPIKey(config) == "" {
-			return errors.New("RunningHub 工作流缺少积分 API Key")
+			return errors.New("RunningHub 工作流缺少 API Key")
 		}
 		if _, err := ValidateOutboundURL(runningHubRootURL(config.BaseURL)); err != nil {
 			return err

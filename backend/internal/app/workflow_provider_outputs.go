@@ -136,7 +136,7 @@ func (s *Service) pollRunningHubWorkflowLegacy(ctx context.Context, config provi
 	return nil, fmt.Errorf("RunningHub 任务超时（%s）", taskID)
 }
 
-// RunningHub 工作流的管理、提交和轮询固定使用积分 API Key；企业级 Key 仅由上传接口单独读取。
+// 使用当前渠道配置的 API Key；v2 工作流通过 Bearer 鉴权支持企业 Key。
 func runningHubAPIKey(config providerConfig) string {
 	return strings.TrimSpace(config.APIKey)
 }

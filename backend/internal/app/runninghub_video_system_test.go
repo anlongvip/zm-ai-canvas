@@ -4,10 +4,47 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"yingce/backend/internal/provider/runninghub"
 )
+
+func TestRunningHubAdminModelTestUsesWorkflowEndpoint(t *testing.T) {
+	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Errorf("unexpected request method or authorization")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case runninghub.SubmitPath(runninghub.WorkflowID):
+			var body runninghub.SubmitRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.NodeInfoList) == 0 {
+				t.Errorf("missing workflow node inputs: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"taskId":"task-test","status":"RUNNING"}`))
+		case runninghub.QueryPath:
+			_, _ = w.Write([]byte(`{"taskId":"task-test","status":"FAILED","errorMessage":"test-stop"}`))
+		default:
+			t.Errorf("admin test used incorrect endpoint: %s", r.URL.Path)
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+	}))
+	defer server.Close()
+	_, err := (&Service{}).runAdminChannelModelTestTask(t.Context(), canvasGenerationInput{
+		Mode: "video", Prompt: "A gray circle",
+		Config: providerConfig{ChannelID: "channel-test", InterfaceType: "runninghub-workflow-video", BaseURL: server.URL, APIKey: "test-key", Model: runninghub.WorkflowID, VideoSeconds: "6", Size: "16:9", VQuality: "720"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "test-stop") {
+		t.Fatalf("expected provider terminal response, got %v", err)
+	}
+	if len(paths) != 2 || paths[0] != runninghub.SubmitPath(runninghub.WorkflowID) || paths[1] != runninghub.QueryPath {
+		t.Fatalf("unexpected request sequence: %v", paths)
+	}
+}
 
 func TestRunningHubSystemJSONUsesBearerAuthorizationAndJSONBody(t *testing.T) {
 	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
