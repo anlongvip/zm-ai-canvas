@@ -261,6 +261,9 @@ func TestChannelFromRequestClearsProxyURL(t *testing.T) {
 func TestPublicChannelOnlyReturnsSystemHeadersAndProxyToAdmin(t *testing.T) {
 	channel := model.ModelChannel{ID: "system-1", Scope: model.ChannelScopeSystem, BaseURL: "https://example.com/v1", HeadersJSON: `[{"name":"X-Gateway-Tenant","value":"tenant-a"}]`, ProxyURL: "socks5://user:secret@127.0.0.1:1080"}
 	adminView := publicChannel(channel, true, nil)
+	if adminView.BaseURL != "/api/ai/system/system-1" || adminView.APIKey != "system" {
+		t.Fatalf("admin system projection = base %q key %q", adminView.BaseURL, adminView.APIKey)
+	}
 	if len(adminView.Headers) != 1 || adminView.Headers[0].Name != "X-Gateway-Tenant" {
 		t.Fatalf("admin headers = %#v", adminView.Headers)
 	}
