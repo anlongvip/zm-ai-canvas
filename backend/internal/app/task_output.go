@@ -58,9 +58,15 @@ type TaskClientContext struct {
 	ArtifactType     string `json:"artifactType,omitempty"`
 }
 
-type TaskBillingSummary struct {
-	AmountMicrocredits int64               `json:"amountMicrocredits"`
-	Status             model.BillingStatus `json:"status"`
+type TaskBillingSummary = model.TaskBillingSummary
+
+func taskBillingSummary(order model.BillingOrder) *TaskBillingSummary {
+	return &TaskBillingSummary{
+		AmountMicrocredits:         order.AmountMicrocredits,
+		ActualAmountMicrocredits:   order.ActualAmountMicrocredits,
+		RefundedAmountMicrocredits: order.RefundedAmountMicrocredits,
+		Status:                     order.Status,
+	}
 }
 
 func taskSummariesForOutput(tasks []model.Task) []TaskSummary {
@@ -72,7 +78,7 @@ func taskSummariesForOutputWithBilling(tasks []model.Task, orders map[string]mod
 	for _, task := range tasks {
 		summary := taskSummaryForOutput(task)
 		if order, ok := orders[task.ID]; ok {
-			summary.Billing = &TaskBillingSummary{AmountMicrocredits: order.AmountMicrocredits, Status: order.Status}
+			summary.Billing = taskBillingSummary(order)
 			if summary.ProviderRequestID == "" {
 				summary.ProviderRequestID = order.ProviderRequestID
 			}

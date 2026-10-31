@@ -32,6 +32,14 @@ type CreditLedgerEntry struct {
 	CreatedAt                  time.Time        `json:"createdAt" gorm:"index:idx_credit_ledger_user_created,priority:2"`
 }
 
+// TaskBillingSummary is a public read model; internal prices and routing stay private.
+type TaskBillingSummary struct {
+	AmountMicrocredits         int64         `json:"amountMicrocredits"`
+	ActualAmountMicrocredits   int64         `json:"actualAmountMicrocredits"`
+	RefundedAmountMicrocredits int64         `json:"refundedAmountMicrocredits"`
+	Status                     BillingStatus `json:"status"`
+}
+
 type BillingOrder struct {
 	BillingCostSnapshot `json:"-" gorm:"embedded"`
 	ID                  string `json:"id" gorm:"primaryKey;size:36"`

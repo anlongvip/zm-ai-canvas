@@ -16,6 +16,8 @@ export function normalizeVideoResolution(value: string | number | undefined) {
     if (token === "auto" || token === "medium" || token === "high") return "720";
     if (token === "2k") return "1440";
     if (token === "4k") return "2160";
+    // Decimal workflow tiers are megapixels, not a pixel short edge.
+    if (/^\d+\.\d+$/.test(token)) return raw;
     const resolution = Number(token.replace(/p$/i, ""));
     if (Number.isFinite(resolution) && resolution > 0) return String(Math.floor(resolution));
     // Channel-declared values are opaque enums, not necessarily numeric tiers.
@@ -53,6 +55,7 @@ export function formatVideoResolutionLabel(value: string | number | undefined) {
     const raw = String(value || "").trim();
     if (!raw) return "";
     const normalized = normalizeVideoResolution(raw);
+    if (/^\d+\.\d+$/.test(normalized)) return `${normalized} MP`;
     if (normalized === "1440" || normalized.toLowerCase() === "2k") return "2K";
     if (normalized === "2160" || normalized.toLowerCase() === "4k") return "4K";
     if (/^\d+$/.test(normalized)) return `${normalized}P`;
@@ -72,6 +75,7 @@ export function videoDimensionsForRatioAndResolution(ratio: string | undefined, 
     if (!Number.isFinite(ratioWidth) || !Number.isFinite(ratioHeight) || ratioWidth <= 0 || ratioHeight <= 0) return undefined;
 
     const normalizedResolution = normalizeVideoResolution(resolution);
+    if (/^\d+\.\d+$/.test(normalizedResolution)) return undefined;
     const resolutionMatch = normalizedResolution.match(/^(\d+)(?:p)?/i);
     const shortEdge = Number(resolutionMatch?.[1]);
     if (!Number.isFinite(shortEdge) || shortEdge <= 0) return undefined;

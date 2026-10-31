@@ -1,5 +1,11 @@
 import type { GenerationTask, TaskStatus } from "@/services/api/task-center";
 
+export function taskBillingDisplayAmount(billing: NonNullable<GenerationTask["billing"]>) {
+    if (billing.status === "settled") return billing.actualAmountMicrocredits;
+    if (billing.status === "refunded") return billing.refundedAmountMicrocredits;
+    return billing.amountMicrocredits;
+}
+
 export const statusLabel: Record<TaskStatus, string> = {
     queued: "排队中",
     running: "生成中",

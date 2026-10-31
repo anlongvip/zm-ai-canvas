@@ -304,6 +304,13 @@ func (s *Service) Task(userID string, id string) (*model.Task, error) {
 		return nil, err
 	}
 	s.hydrateTaskProviderRequestID(task)
+	orders, err := s.repo.BillingOrdersByTaskIDs(userID, taskBillingTaskIDs([]model.Task{*task}))
+	if err != nil {
+		return nil, err
+	}
+	if order, ok := orders[task.ID]; ok {
+		task.Billing = taskBillingSummary(order)
+	}
 	return taskForOutput(*task), nil
 }
 

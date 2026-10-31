@@ -59,6 +59,8 @@ export type GenerationTask = {
     updatedAt: string;
     billing?: {
         amountMicrocredits: number;
+        actualAmountMicrocredits: number;
+        refundedAmountMicrocredits: number;
         status: TaskBillingStatus;
     };
     clientContext?: {

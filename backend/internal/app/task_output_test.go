@@ -6,6 +6,10 @@ import (
 	"testing"
 
 	"yingce/backend/internal/model"
+	"yingce/backend/internal/repository"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestTaskForOutputRedactsRoutingAndSecrets(t *testing.T) {
@@ -29,6 +33,59 @@ func TestTaskForOutputRedactsRoutingAndSecrets(t *testing.T) {
 	}
 	if input["resourceId"] != "resource-1" {
 		t.Fatalf("resource identity was not preserved: %#v", input)
+	}
+}
+
+func TestTaskSummaryBillingPreservesActualAndRefundWithoutInternalPrices(t *testing.T) {
+	order := model.BillingOrder{AmountMicrocredits: 33335, ActualAmountMicrocredits: 853376, RefundedAmountMicrocredits: 12345,
+		Status: model.BillingStatusSettled, ChannelID: "private-channel", UnitPriceMicrocredits: 6667}
+	summary := taskSummariesForOutputWithBilling([]model.Task{{ID: "task"}}, map[string]model.BillingOrder{"task": order})[0]
+	if summary.Billing == nil || summary.Billing.AmountMicrocredits != 33335 || summary.Billing.ActualAmountMicrocredits != 853376 || summary.Billing.RefundedAmountMicrocredits != 12345 {
+		t.Fatalf("billing amounts missing: %+v", summary.Billing)
+	}
+	encoded, err := json.Marshal(summary.Billing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(encoded, &fields); err != nil || len(fields) != 4 {
+		t.Fatalf("unexpected public billing contract: %s, %v", encoded, err)
+	}
+}
+
+func TestTaskDetailBillingOnlyIncludesCurrentUsersOrder(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+newID()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Task{}, &model.BillingOrder{}); err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, _ := db.DB()
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	task := model.Task{ID: "task", UserID: "owner", BillingOrderID: "order", ProviderRequestID: "rh-task"}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	order := model.BillingOrder{ID: "order", UserID: "other", TaskID: task.ID, IdempotencyKey: "order",
+		AmountMicrocredits: 33335, ActualAmountMicrocredits: 853376, Status: model.BillingStatusSettled}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{repo: repository.New(db)}
+	detail, err := svc.Task("owner", task.ID)
+	if err != nil || detail.Billing != nil {
+		t.Fatalf("foreign billing exposed: %+v, %v", detail, err)
+	}
+	if err := db.Model(&order).Update("user_id", "owner").Error; err != nil {
+		t.Fatal(err)
+	}
+	detail, err = svc.Task("owner", task.ID)
+	if err != nil || detail.Billing == nil || detail.Billing.ActualAmountMicrocredits != 853376 {
+		t.Fatalf("actual billing missing: %+v, %v", detail, err)
+	}
+	if _, err := svc.Task("other", task.ID); err == nil {
+		t.Fatal("foreign user read task detail")
 	}
 }
 

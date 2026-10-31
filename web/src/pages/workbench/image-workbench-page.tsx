@@ -17,6 +17,7 @@ import { modelCapabilityConfigFor, normalizeImageValue, normalizeVideoValue } fr
 import { creationVideoConfig } from "@/pages/create/creation-generation-config";
 import { imageQualityLabel } from "@/lib/image-quality";
 import { modelQuoteRequest } from "@/lib/model-pricing";
+import { taskBillingDisplayAmount } from "@/lib/generation-task-display";
 import { quoteModel } from "@/services/api/logical-models";
 import { prepareBackendGenerationTask } from "@/services/api/generation-task";
 import { createGenerationTask, cancelGenerationTask, queryGenerationTask, retryGenerationTask, type GenerationTask } from "@/services/api/task-center";
@@ -414,10 +415,16 @@ export function WorkbenchPage({ kind }: { kind: WorkbenchKind }) {
     useEffect(() => {
         let stopped = false;
         let timer = 0;
+        let billingSnapshot = "";
         const poll = async () => {
             const revision = workbenchRevisionRef.current;
             const result = await loadTasks();
             if (stopped) return;
+            const nextBillingSnapshot = JSON.stringify(result.map((task) => [task.id, task.status, task.billing]));
+            if (nextBillingSnapshot !== billingSnapshot) {
+                billingSnapshot = nextBillingSnapshot;
+                window.dispatchEvent(new CustomEvent("wallet:updated"));
+            }
             if (activeTask && revision === workbenchRevisionRef.current) {
                 const latest = result.find((item) => item.id === activeTask.id);
                 if (latest) {
@@ -1481,7 +1488,7 @@ export function WorkbenchPage({ kind }: { kind: WorkbenchKind }) {
                                 </div>
                                 <div>
                                     <dt>积分</dt>
-                                    <dd>{detailTask.billing ? `${formatCredits(detailTask.billing.amountMicrocredits)} · ${detailTask.billing.status}` : "--"}</dd>
+                                    <dd>{detailTask.billing ? `${formatCredits(taskBillingDisplayAmount(detailTask.billing))} · ${detailTask.billing.status}` : "--"}</dd>
                                 </div>
                                 <div>
                                     <dt>创建时间</dt>

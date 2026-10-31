@@ -83,6 +83,11 @@ func TestVideoRuntimeSettlementRollsBackFundsWhenLedgerFails(t *testing.T) {
 func newRefundedRuntimeOrder(t *testing.T) (*Repository, *gorm.DB, *model.BillingOrder) {
 	t.Helper()
 	repo, db := newRefundedBillingRecoveryRepository(t)
+	return repo, db, seedRefundedRuntimeOrder(t, repo, db)
+}
+
+func seedRefundedRuntimeOrder(t *testing.T, repo *Repository, db *gorm.DB) *model.BillingOrder {
+	t.Helper()
 	if err := db.Create(&model.CreditAccount{UserID: "runtime-user", AvailableMicrocredits: 1_000_000, ReservedMicrocredits: 7000}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +104,7 @@ func newRefundedRuntimeOrder(t *testing.T) (*Repository, *gorm.DB, *model.Billin
 	if err := repo.RefundBillingOrder(order.ID, "upstream outcome was not yet known"); err != nil {
 		t.Fatal(err)
 	}
-	return repo, db, order
+	return order
 }
 
 func assertRefundedRuntimeCharge(t *testing.T, repo *Repository, db *gorm.DB, actual, quantity, available int64) {
