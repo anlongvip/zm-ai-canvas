@@ -119,7 +119,10 @@ func runningHubSystemJSON(ctx context.Context, config providerConfig, endpoint s
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, target)
+	if err := json.Unmarshal(data, target); err != nil {
+		return fmt.Errorf("RunningHub 响应解析失败：%s：%w", sanitizeProviderDiagnostic(string(data)), err)
+	}
+	return nil
 }
 
 func runningHubResolutionMegapixels(value string) float64 {

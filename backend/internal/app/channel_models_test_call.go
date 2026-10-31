@@ -144,6 +144,8 @@ func (s *Service) TestAdminChannelModel(ctx context.Context, actor *model.User, 
 		var upstream providerHTTPError
 		if errors.As(err, &upstream) && isRunningHubInterface(string(protocol)) {
 			message += "；RunningHub 原始响应：" + sanitizeProviderDiagnostic(upstream.Body)
+		} else if isRunningHubInterface(string(protocol)) {
+			message += "；RunningHub 诊断：" + sanitizeProviderDiagnostic(err.Error())
 		}
 		return nil, WrapAppError(status, message, err)
 	}
