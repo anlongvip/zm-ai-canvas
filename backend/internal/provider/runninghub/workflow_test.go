@@ -50,6 +50,9 @@ func TestRequestShapesMatchRunningHubV2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if inputs[2].FieldValue != "16:9 (Widescreen)" {
+		t.Fatalf("aspect ratio must use the workflow enum: %v", inputs[2].FieldValue)
+	}
 	submit, err := json.Marshal(NewSubmitRequest(inputs, "default"))
 	if err != nil {
 		t.Fatal(err)

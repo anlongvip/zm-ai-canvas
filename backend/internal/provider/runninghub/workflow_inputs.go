@@ -27,13 +27,20 @@ func BuildVideoInputs(input VideoInputs) ([]NodeInput, error) {
 	if strings.TrimSpace(input.AspectRatio) == "" {
 		return nil, fmt.Errorf("视频画幅不能为空")
 	}
+	ratio := strings.TrimSpace(input.AspectRatio)
+	for _, option := range []string{"1:1 (Square)", "2:3 (Portrait Photo)", "3:2 (Photo)", "3:4 (Portrait Standard)", "4:3 (Standard)", "9:16 (Portrait Widescreen)", "16:9 (Widescreen)", "21:9 (Ultrawide)"} {
+		if ratio == strings.SplitN(option, " ", 2)[0] {
+			ratio = option
+			break
+		}
+	}
 	if input.Megapixels <= 0 {
 		return nil, fmt.Errorf("视频分辨率必须大于 0")
 	}
 	return []NodeInput{
 		{NodeID: "263", FieldName: "text", FieldValue: prompt},
 		{NodeID: "259", FieldName: "value", FieldValue: input.Duration},
-		{NodeID: "252", FieldName: "aspect_ratio", FieldValue: strings.TrimSpace(input.AspectRatio)},
+		{NodeID: "252", FieldName: "aspect_ratio", FieldValue: ratio},
 		{NodeID: "252", FieldName: "megapixels", FieldValue: strconv.FormatFloat(input.Megapixels, 'f', -1, 64)},
 	}, nil
 }
