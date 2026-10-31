@@ -12,7 +12,13 @@ test("workflow megapixel tiers survive selection without becoming pixel dimensio
 });
 
 test("pixel presets and opaque channel enums keep their existing meaning", () => {
-    for (const [value, normalized, label] of [["480p", "480", "480P"], ["720", "720", "720P"], ["2K", "1440", "2K"], ["4k", "2160", "4K"], ["768p竖", "768p竖", "768P竖"]]) {
+    for (const [value, normalized, label] of [
+        ["480p", "480", "480P"],
+        ["720", "720", "720P"],
+        ["2K", "1440", "2K"],
+        ["4k", "2160", "4K"],
+        ["768p竖", "768p竖", "768P竖"],
+    ]) {
         assert.equal(normalizeVideoResolution(value), normalized);
         assert.equal(formatVideoResolutionLabel(value), label);
     }
