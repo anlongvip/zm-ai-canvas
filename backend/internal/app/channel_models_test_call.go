@@ -143,7 +143,7 @@ func (s *Service) TestAdminChannelModel(ctx context.Context, actor *model.User, 
 		message := "模型测试失败：" + providerUserFacingErrorMessage(err)
 		var upstream providerHTTPError
 		if errors.As(err, &upstream) && isRunningHubInterface(string(protocol)) {
-			message += "；RunningHub 原始响应：" + sanitizeProviderDiagnostic(upstream.Body)
+			message += fmt.Sprintf("；RunningHub 上游状态：%d；原始响应：%s", upstream.StatusCode, sanitizeProviderDiagnostic(upstream.Body))
 		} else if isRunningHubInterface(string(protocol)) {
 			message += "；RunningHub 诊断：" + sanitizeProviderDiagnostic(err.Error())
 		}
