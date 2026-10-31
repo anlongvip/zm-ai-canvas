@@ -13,6 +13,7 @@ import (
 
 	"yingce/backend/internal/model"
 	"yingce/backend/internal/protocol"
+	"yingce/backend/internal/provider/runninghub"
 	"yingce/backend/internal/repository"
 )
 
@@ -109,6 +110,9 @@ func (s *Service) reconcileProviderCancellation(ctx context.Context, task *model
 	queryCtx := withProviderRequestKind(withProviderAnalytics(ctx, s, queryTask), "cancel-query")
 	outcome, providerStatus, err := s.queryProviderCancellation(queryCtx, input, task.ProviderRequestID)
 	if err != nil {
+		if errors.Is(err, runninghub.ErrTaskNotFound) {
+			return s.markProviderCancellationUncertain(task, err.Error())
+		}
 		if task.ProviderCancelAttempts >= providerCancellationMaxAttempts-1 {
 			return s.markProviderCancellationUncertain(task, "连续查询上游取消状态失败，费用待核对："+safeProviderLogError(err))
 		}
@@ -129,7 +133,13 @@ func (s *Service) reconcileProviderCancellation(ctx context.Context, task *model
 	case providerCancellationSucceeded:
 		errorText := "取消请求发出前上游已完成，费用已结算"
 		var billingErr error
-		if err := billing.SettleBilling(task.BillingOrderID, task.ProviderRequestID); err != nil {
+		settle := func() error {
+			if handled, err := s.settleRunningHubRuntimeBilling(*task, task.ProviderRequestID); handled || err != nil {
+				return err
+			}
+			return billing.SettleBilling(task.BillingOrderID, task.ProviderRequestID)
+		}
+		if err := settle(); err != nil {
 			errorText = "取消请求发出前上游已完成，但费用结算失败，需人工核对：" + err.Error()
 			billingErr = fmt.Errorf("取消确认后的计费结算失败：%w", err)
 			if uncertainErr := billing.MarkBillingUncertain(task.BillingOrderID, errorText); uncertainErr != nil {
@@ -202,6 +212,9 @@ func supportsProviderCancellation(interfaceType string) bool {
 // cancel 发出取消，poll 的状态映射确认上游是否真的取消（确认后才退积分）。
 // 其他声明了 cancel 的插件（如 OpenAI Videos 的 DELETE 实为删除）语义未逐一核实，暂不启用。
 func (s *Service) supportsProviderCancellation(interfaceType string) bool {
+	if interfaceType == string(model.ChannelInterfaceRunningHubVideo) {
+		return true
+	}
 	if supportsProviderCancellation(interfaceType) {
 		return true
 	}
@@ -220,6 +233,9 @@ func (s *Service) declarativeCancellationAdapter(ctx context.Context, interfaceT
 }
 
 func (s *Service) cancelProviderTask(ctx context.Context, input canvasGenerationInput, providerRequestID string) error {
+	if isRunningHubSystemVideo(input.Config) {
+		return cancelRunningHubSystemTask(ctx, input.Config, providerRequestID)
+	}
 	if supportsProviderCancellation(input.Config.InterfaceType) {
 		return cancelProviderTask(ctx, input.Config, providerRequestID)
 	}
@@ -237,6 +253,23 @@ func (s *Service) cancelProviderTask(ctx context.Context, input canvasGeneration
 }
 
 func (s *Service) queryProviderCancellation(ctx context.Context, input canvasGenerationInput, providerRequestID string) (providerCancellationOutcome, string, error) {
+	if isRunningHubSystemVideo(input.Config) {
+		response, err := queryRunningHubSystemResponse(ctx, input.Config, runningHubRootURL(input.Config.BaseURL), providerRequestID)
+		if err != nil {
+			return "", "", err
+		}
+		status := runninghub.NormalizeStatus(response.Status)
+		switch status {
+		case "cancelled":
+			return providerCancellationConfirmed, status, nil
+		case "succeeded":
+			return providerCancellationSucceeded, status, nil
+		case "failed":
+			return providerCancellationFailed, status, nil
+		default:
+			return providerCancellationPending, status, nil
+		}
+	}
 	if supportsProviderCancellation(input.Config.InterfaceType) {
 		return queryProviderCancellation(ctx, input.Config, providerRequestID)
 	}

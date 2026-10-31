@@ -2,9 +2,29 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 // Bun 直接执行 TypeScript 测试时需要保留扩展名；生产 tsconfig 不包含 test/。
-import { DEFAULT_VIDEO_PROMPT_MAX_CHARS, defaultModelCapabilityConfig, normalizeImageValue, normalizeVideoValue } from "../src/lib/model-capabilities.ts";
+import { DEFAULT_VIDEO_PROMPT_MAX_CHARS, defaultModelCapabilityConfig, normalizeImageValue, normalizeModelCapabilityConfig, normalizeVideoValue } from "../src/lib/model-capabilities.ts";
 import { imageTierAvailable, imageResolutionTiers } from "../src/lib/image-size-presets.ts";
 import { workflowFieldIsRatioChoices } from "../src/lib/model-capabilities-workflow.ts";
+
+test("RunningHub drafts expose the published reference limits and megapixel resolutions", () => {
+    const config = defaultModelCapabilityConfig("runninghub-workflow-video", "2112923637551575042");
+    const profile = config.video!;
+    assert.equal(profile.executionTier, "standard");
+    assert.equal(profile.references.maxImages, 9);
+    assert.equal(profile.references.maxVideos, 3);
+    assert.equal(profile.references.maxAudios, 3);
+    assert.equal(profile.duration.max, 20);
+    assert.equal(profile.duration.default, 5);
+    assert.deepEqual(profile.resolutions, ["0.5", "0.9", "1.5", "2.0"]);
+    assert.equal(profile.defaultResolution, "0.9");
+    assert.ok(profile.operations.includes("reference_to_video"));
+    assert.ok(profile.operations.includes("audio_to_video"));
+    for (const executionTier of ["plus", "ultra"] as const) {
+        const normalized = normalizeModelCapabilityConfig({ ...config, video: { ...profile, executionTier } }).video!;
+        assert.equal(normalized.executionTier, executionTier);
+        assert.equal(normalized.defaultResolution, "0.9");
+    }
+});
 
 test("workflow ratio choices use the direct selection control only for ratio values", () => {
     const field = { fieldName: "aspectRatio", fieldType: "SELECT", options: ["auto", "9:16", "16:9", "21:9"] };

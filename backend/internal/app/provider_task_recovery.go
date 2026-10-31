@@ -287,8 +287,14 @@ func (s *Service) settleRecoveredBilling(task *model.Task, providerRequestID str
 	if order == nil {
 		return fmt.Errorf("任务计费订单不存在：%s", task.BillingOrderID)
 	}
+	if order.UserID != task.UserID || order.TaskID != task.ID {
+		return BadAuthRequest("任务与计费订单归属不一致")
+	}
 	if order.Status == model.BillingStatusSettled {
 		return nil
+	}
+	if handled, err := s.settleRunningHubRuntimeBilling(*task, providerRequestID); handled || err != nil {
+		return err
 	}
 	if order.Status == model.BillingStatusRefunded {
 		return billing.RestoreRefundedBilling(task.BillingOrderID, providerRequestID)
@@ -358,7 +364,7 @@ func (s *Service) queryFailedVideoTask(ctx context.Context, task *model.Task, cl
 	}
 	ctx = ensureOfficialProtocolAdapter(ctx, config.InterfaceType)
 	adapter, declarative := declarativeProtocolAdapterForContext(ctx, config.InterfaceType)
-	if !declarative {
+	if !declarative && !isRunningHubSystemVideo(config) {
 		return nil, BadAuthRequest("该任务的请求协议不支持安全查询上游状态")
 	}
 	input.Config = config
@@ -387,8 +393,17 @@ func (s *Service) queryFailedVideoTask(ctx context.Context, task *model.Task, cl
 	queryCtx := withProviderAnalytics(recoveryCtx, s, *task)
 	var result map[string]interface{}
 	var providerStatus string
-	result, providerStatus, err = queryProtocolAdapterVideoTask(queryCtx, input, adapter, providerRequestID)
+	if isRunningHubSystemVideo(input.Config) {
+		result, providerStatus, err = s.queryRunningHubSystemVideo(queryCtx, input.Config, providerRequestID)
+	} else {
+		result, providerStatus, err = queryProtocolAdapterVideoTask(queryCtx, input, adapter, providerRequestID)
+	}
 	if err != nil {
+		if input.Config.InterfaceType == string(model.ChannelInterfaceRunningHubVideo) && (providerStatus == "failed" || providerStatus == "cancelled") {
+			if refundErr := billing.RefundBilling(task.BillingOrderID, "人工查询确认 RunningHub 上游失败或取消"); refundErr != nil {
+				err = errors.Join(err, fmt.Errorf("上游终态确认后的退款失败：%w", refundErr))
+			}
+		}
 		_ = s.log(task.UserID, task.ID, "error", "人工查询上游视频任务失败", err.Error())
 		return nil, err
 	}

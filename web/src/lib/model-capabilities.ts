@@ -100,6 +100,8 @@ export type ImageCapabilityConfig = {
 };
 
 export type VideoCapabilityConfig = {
+    /** 由管理员固定的算力档位，与输出分辨率独立。 */
+    executionTier?: "standard" | "default" | "plus" | "ultra";
     references: {
         promptMaxChars: number;
         minImages: number;
@@ -472,6 +474,19 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         operations: ["text_to_video", "image_to_video"],
         defaultOperation: "text_to_video",
     };
+    if (protocol === "runninghub-workflow-video") {
+        video.executionTier = "standard";
+        video.references.maxVideos = 3;
+        video.references.maxAudios = 3;
+        video.references.maxVideoBytes = 200 * 1024 * 1024;
+        video.references.maxAudioBytes = 15 * 1024 * 1024;
+        video.references.maxVideoDurationSeconds = 15;
+        video.references.maxAudioDurationSeconds = 15;
+        video.duration = { selection: "range", min: 1, max: 20, step: 1, default: 5 };
+        video.resolutions = ["0.5", "0.9", "1.5", "2.0"];
+        video.defaultResolution = "0.9";
+        video.operations = ["text_to_video", "image_to_video", "reference_to_video", "audio_to_video"];
+    }
     if (protocol === "volcengine-jimeng-video") {
         video.duration = { selection: "enum", values: [5, 10], default: 5 };
         video.resolutions = ["720p"];

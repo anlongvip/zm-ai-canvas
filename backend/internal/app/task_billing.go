@@ -66,7 +66,7 @@ func (c *taskBillingCoordinator) SettleBillingWithAudioDuration(orderID string, 
 	}); ok {
 		return repo.SettleBillingOrderWithAudioDuration(orderID, providerRequestID, durationMs)
 	}
-	return c.repo.SettleBillingOrder(orderID, providerRequestID)
+	return errors.New("计费仓库不支持实际时长结算，需人工核对")
 }
 
 func (c *taskBillingCoordinator) RestoreRefundedBilling(orderID string, providerRequestID string) error {
@@ -74,6 +74,18 @@ func (c *taskBillingCoordinator) RestoreRefundedBilling(orderID string, provider
 		return nil
 	}
 	return c.repo.RestoreRefundedBillingOrder(orderID, providerRequestID)
+}
+
+func (c *taskBillingCoordinator) RestoreRefundedBillingWithRuntime(orderID string, providerRequestID string, durationMs int64) error {
+	if orderID == "" {
+		return nil
+	}
+	if repo, ok := c.repo.(interface {
+		RestoreRefundedBillingOrderWithRuntime(string, string, int64) error
+	}); ok {
+		return repo.RestoreRefundedBillingOrderWithRuntime(orderID, providerRequestID, durationMs)
+	}
+	return fmt.Errorf("计费仓库不支持已退款订单按实际运行时间补扣：%w", errTaskBillingReview)
 }
 
 func (c *taskBillingCoordinator) RefundBilling(orderID string, errorText string) error {

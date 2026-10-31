@@ -53,6 +53,18 @@ func (r *taskBillingRepositoryStub) TaskHasSuccessfulBillableCall(string) (bool,
 	return r.hasSuccessfulCall, r.callErr
 }
 
+func TestMeasuredBillingDoesNotFallBackToOriginalReservation(t *testing.T) {
+	repo := &taskBillingRepositoryStub{}
+	err := newTaskBillingCoordinator(repo).SettleBillingWithAudioDuration("order-1", "provider-1", 120000)
+	if err == nil || len(repo.settleCalls) != 0 {
+		t.Fatalf("unsupported measured settlement used fixed reservation: %v, calls=%v", err, repo.settleCalls)
+	}
+	err = newTaskBillingCoordinator(repo).RestoreRefundedBillingWithRuntime("order-1", "provider-1", 120000)
+	if !errors.Is(err, errTaskBillingReview) || len(repo.restoreCalls) != 0 {
+		t.Fatalf("unsupported runtime recovery used fixed reservation: %v, calls=%v", err, repo.restoreCalls)
+	}
+}
+
 func TestTaskBillingCoordinatorEmptyOrderIsNoOp(t *testing.T) {
 	repo := &taskBillingRepositoryStub{}
 	billing := newTaskBillingCoordinator(repo)
@@ -65,6 +77,9 @@ func TestTaskBillingCoordinatorEmptyOrderIsNoOp(t *testing.T) {
 	}
 	if err := billing.RestoreRefundedBilling("", "provider-1"); err != nil {
 		t.Fatalf("RestoreRefundedBilling() error = %v", err)
+	}
+	if err := billing.RestoreRefundedBillingWithRuntime("", "provider-1", 120000); err != nil {
+		t.Fatalf("RestoreRefundedBillingWithRuntime() error = %v", err)
 	}
 	if err := billing.RefundBilling("", "refund"); err != nil {
 		t.Fatalf("RefundBilling() error = %v", err)

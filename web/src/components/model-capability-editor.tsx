@@ -147,6 +147,21 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
                                 onChange={(defaultOperation) => update({ defaultOperation })}
                             />
                         </Field>
+                        {protocol === "runninghub-workflow-video" ? (
+                            <Field label="算力档位（与此模型价格对应）">
+                                <Select
+                                    className="w-full"
+                                    disabled={disabled}
+                                    value={profile.executionTier === "default" ? "standard" : profile.executionTier || "standard"}
+                                    options={[
+                                        { label: "Standard", value: "standard" },
+                                        { label: "Plus", value: "plus" },
+                                        { label: "Ultra", value: "ultra" },
+                                    ]}
+                                    onChange={(executionTier) => update({ executionTier })}
+                                />
+                            </Field>
+                        ) : null}
                     </ProtocolParameterCard>
                     <ProtocolParameterCard step="02" title="输出时长" description="定义可用秒数及默认时长">
                         <SegmentedControl

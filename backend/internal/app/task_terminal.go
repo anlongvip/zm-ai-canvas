@@ -64,6 +64,14 @@ type videoProcessingTaskSettlement interface {
 	settleVideoProcessingBilling(task model.Task, providerRequestID string) (bool, error)
 }
 
+type runningHubRuntimeTaskSettlement interface {
+	settleRunningHubRuntimeBilling(model.Task, string) (bool, error)
+}
+
+type runningHubTaskFailureReview interface {
+	runningHubFailureRequiresReview(model.Task) (handled bool, review bool)
+}
+
 func newTaskTerminalCoordinator(s *Service) *taskTerminalCoordinator {
 	return &taskTerminalCoordinator{
 		repo:              s.repo,
@@ -131,7 +139,16 @@ func (c *taskTerminalCoordinator) handleExecutionFailure(task *model.Task, err e
 		if channelSlotFailedBeforeRequest {
 			billingErr = c.billing.RefundBilling(task.BillingOrderID, "等待渠道槽位期间取消，上游请求未发出")
 		} else {
-			billingErr = c.billing.MarkBillingUncertain(task.BillingOrderID, "任务取消时上游费用状态不明确")
+			confirmed := false
+			if runningHub, ok := c.outputs.(runningHubTaskFailureReview); ok {
+				handled, review := runningHub.runningHubFailureRequiresReview(*task)
+				confirmed = handled && !review
+			}
+			if confirmed {
+				billingErr = c.billing.RefundBilling(task.BillingOrderID, "上游已确认失败或取消")
+			} else {
+				billingErr = c.billing.MarkBillingUncertain(task.BillingOrderID, "任务取消时上游费用状态不明确")
+			}
 		}
 		c.finalizeReplay(task, model.TaskStatusCancelled, "文本回放草稿归并失败")
 		_ = c.logger.log(task.UserID, task.ID, "warn", "任务已取消", "")
@@ -160,7 +177,7 @@ func (c *taskTerminalCoordinator) handleExecutionFailure(task *model.Task, err e
 	}
 	c.finalizeReplay(task, model.TaskStatusFailed, "文本回放草稿归并失败")
 	var billingErr error
-	if providerSucceeded || (!channelSlotFailedBeforeRequest && c.billing.BillingFailureRequiresReview(task.BillingOrderID, task.ID, err)) {
+	if providerSucceeded || (!channelSlotFailedBeforeRequest && c.failureRequiresReview(*task, err)) {
 		billingErr = c.billing.MarkBillingUncertain(task.BillingOrderID, task.Error)
 	} else {
 		billingErr = c.billing.RefundBilling(task.BillingOrderID, task.Error)
@@ -171,6 +188,15 @@ func (c *taskTerminalCoordinator) handleExecutionFailure(task *model.Task, err e
 		resultErr = errors.Join(resultErr, fmt.Errorf("任务计费收尾失败：%w", billingErr))
 	}
 	return resultErr
+}
+
+func (c *taskTerminalCoordinator) failureRequiresReview(task model.Task, err error) bool {
+	if runningHub, ok := c.outputs.(runningHubTaskFailureReview); ok {
+		if handled, review := runningHub.runningHubFailureRequiresReview(task); handled {
+			return review
+		}
+	}
+	return c.billing.BillingFailureRequiresReview(task.BillingOrderID, task.ID, err)
 }
 
 func (c *taskTerminalCoordinator) handleAlreadyCancelled(task model.Task) error {
@@ -248,10 +274,14 @@ func (c *taskTerminalCoordinator) handleSuccessWithSettlement(task *model.Task, 
 		}
 	}
 	settleBilling := func() error {
-		if runtime, ok := c.outputs.(interface {
-			SettleRunningHubRuntimeBilling(model.Task, string) (bool, error)
-		}); ok && completedTask != nil && capabilityFromTaskType(task.Type) == "video" {
-			if handled, err := runtime.SettleRunningHubRuntimeBilling(*completedTask, ""); handled || err != nil {
+		if runtime, ok := c.outputs.(runningHubRuntimeTaskSettlement); ok && capabilityFromTaskType(task.Type) == "video" {
+			if fetchErr != nil {
+				return fetchErr
+			}
+			if completedTask == nil {
+				return errors.New("任务成功后无法读取视频产物")
+			}
+			if handled, err := runtime.settleRunningHubRuntimeBilling(*completedTask, completedTask.ProviderRequestID); handled || err != nil {
 				return err
 			}
 		}

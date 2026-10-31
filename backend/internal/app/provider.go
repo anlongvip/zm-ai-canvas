@@ -199,9 +199,19 @@ func (s *Service) processCanvasGenerationTask(ctx context.Context, userID string
 		if err := validateWorkflowProviderConfig(input.Mode, input.Config); err != nil {
 			return nil, err
 		}
-		// 工作流参数由工作流字段定义校验，普通模型能力配置不能覆盖它们。
+		// 系统视频模型使用管理员配置的能力与算力档位；用户工作流仍由字段定义校验。
+		if isRunningHubSystemVideo(input.Config) {
+			if err := s.validateResolvedVideoCapability(&input); err != nil {
+				return nil, err
+			}
+		}
 		if resumedProviderRequestID(ctx) == "" {
 			if err := s.hydrateGenerationMedia(userID, &input, providerMediaHydrationPolicy{}); err != nil {
+				return nil, err
+			}
+		}
+		if isRunningHubSystemVideo(input.Config) {
+			if err := validateVideoTask(input.VideoCapability, input); err != nil {
 				return nil, err
 			}
 		}

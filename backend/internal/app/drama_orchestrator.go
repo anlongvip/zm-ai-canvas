@@ -276,6 +276,9 @@ func (r *dramaRun) taskCost(task *model.Task) (int64, error) {
 	if order.Status == model.BillingStatusRefunded {
 		return 0, nil
 	}
+	if order.Status == model.BillingStatusSettled {
+		return order.ActualAmountMicrocredits, nil
+	}
 	return order.AmountMicrocredits, nil
 }
 

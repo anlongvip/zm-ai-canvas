@@ -159,6 +159,12 @@ Pi SDK 执行前的参数校验失败由 `agent-runtime/pi/agent-runtime.mjs` �
 | Agent 画布上下文、操作与历史 | `web/src/lib/canvas/canvas-context-discovery.ts`、`canvas-operation-contract.ts`、`web/src/pages/canvas/use-canvas-operation-history.ts` |
 | 官方提示词目录与客户端起始稿 | `backend/internal/prompts/`、`web/src/lib/prompts/` |
 
+## RunningHub 系统视频
+
+`backend/internal/provider/runninghub/` 定义 v2 提交/查询合同、工作流节点顺序、空参考槽位与视频输出选择；宿主 `app/runninghub_video_system.go` 负责执行、轮询、恢复回查和取消，`runninghub_system_media.go` 负责使用同一服务端凭证上传素材。真实任务入口 `app/provider.go` 解析管理员模型能力后执行系统工作流，用户自定义工作流保留原路径。
+
+`app/runninghub_runtime_billing.go` 读取结果或可信查询记录中的实际运行时间，连接终态、恢复与取消对账的结算策略；`repository/finance_billing.go` 原子更新账户、订单数量、成本和流水。后台算力档位在 `web/src/components/model-capability-editor.tsx` 编辑。`app/runninghub_entry_integration_test.go` 覆盖工作台、画布、自动做剧到模拟上游的入口；`runninghub_video_live_test.go` 为默认跳过的真实上游验收。
+
 ## 前端 HTTP 与产品壳
 
 | 职责 | 代码位置 |

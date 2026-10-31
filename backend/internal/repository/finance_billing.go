@@ -8,6 +8,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -281,6 +282,9 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 		if order.Status == model.BillingStatusRefunded {
 			return errors.New("billing order already refunded")
 		}
+		if order.Status == model.BillingStatusUncertain && order.Capability == "video" && order.BillingMode == "per_second" && order.RefundedAt != nil {
+			return ErrBillingStateConflict
+		}
 		if order.BillingMode != "token" {
 			if err := validateBillingChargeLimit(order, order.AmountMicrocredits); err != nil {
 				return err
@@ -526,24 +530,81 @@ func audioBillingAmount(unitPrice int64, quantity int64, multiplierBPS int64) (i
 // The conditional refunded -> settled update keeps concurrent/repeated manual
 // recovery requests idempotent.
 func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID string) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	return r.restoreRefundedBillingOrder(id, providerRequestID, nil)
+}
+
+// RestoreRefundedBillingOrderWithRuntime charges a successful video task's
+// measured runtime after its reservation was refunded. Quantity, cost snapshot
+// usage, account debit and ledger are committed in the same transaction.
+func (r *Repository) RestoreRefundedBillingOrderWithRuntime(id string, providerRequestID string, durationMs int64) error {
+	if durationMs <= 0 || durationMs > math.MaxInt64-999 {
+		return errors.New("invalid restored video runtime")
+	}
+	if strings.TrimSpace(providerRequestID) == "" {
+		return errors.New("restored video runtime requires a provider task ID")
+	}
+	return r.restoreRefundedBillingOrder(id, providerRequestID, &durationMs)
+}
+
+func (r *Repository) restoreRefundedBillingOrder(id string, providerRequestID string, durationMs *int64) error {
+	reviewRequired := false
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		var order model.BillingOrder
-		if err := tx.First(&order, "id = ?", id).Error; err != nil {
+		// PostgreSQL serializes recovery on this order. The status CAS below
+		// also prevents a stale transaction from committing another debit.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&order, "id = ?", id).Error; err != nil {
 			return err
+		}
+		if durationMs != nil {
+			if order.Capability != "video" || order.BillingMode != "per_second" {
+				return errors.New("runtime recovery requires per-second video billing")
+			}
+			if order.ProviderRequestID != "" && order.ProviderRequestID != providerRequestID {
+				return errors.New("restored billing provider task ID mismatch")
+			}
+			if order.CostPricing.Configured && order.CostBillingMode != "per_second" {
+				return errors.New("runtime recovery requires per-second cost pricing")
+			}
 		}
 		if order.Status == model.BillingStatusSettled {
 			return nil
 		}
-		if order.Status != model.BillingStatusRefunded {
+		releasedReview := durationMs != nil && order.Status == model.BillingStatusUncertain &&
+			order.RefundedAt != nil && order.ActualAmountMicrocredits == 0 && order.SettledAt == nil &&
+			order.RefundedAmountMicrocredits == order.AmountMicrocredits && order.Quantity > 0
+		if order.Status != model.BillingStatusRefunded && !releasedReview {
 			return ErrBillingStateConflict
 		}
-		if order.BillingMode != "token" {
+		if durationMs != nil && (order.ResolvedBy != "" || (releasedReview &&
+			((*durationMs+999)/1000 != order.Quantity || (order.CostBillingMode == "per_second" && order.CostQuantity != order.Quantity)))) {
+			return ErrBillingStateConflict
+		}
+		if durationMs == nil && order.BillingMode != "token" {
 			if err := validateBillingChargeLimit(order, order.AmountMicrocredits); err != nil {
 				return err
 			}
 		}
 
 		actual := order.AmountMicrocredits
+		quantity := order.Quantity
+		if durationMs != nil {
+			quantity = (*durationMs + 999) / 1000
+			var err error
+			actual, err = audioBillingAmount(order.UnitPriceMicrocredits, quantity, order.MultiplierBasisPoints)
+			if err != nil {
+				return err
+			}
+			if err := validateBillingChargeLimit(order, actual); err != nil {
+				return err
+			}
+			// Cost is derived from the immutable cost price and CostQuantity;
+			// validate the amount before persisting an unauditable snapshot.
+			if order.CostPricing.Configured {
+				if _, err := audioBillingAmount(order.CostPricing.UnitPriceMicrocredits, quantity, 10000); err != nil {
+					return err
+				}
+			}
+		}
 		var usage *BillingUsage
 		var usageSource string
 		if order.BillingMode == "token" {
@@ -569,8 +630,14 @@ func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID st
 			return errors.New("invalid restored billing amount")
 		}
 
+		// Runtime recovery cannot create debt. Legacy fixed/token recovery keeps
+		// its existing balance policy, with an int64 underflow guard.
+		minimumBalance := math.MinInt64 + actual
+		if durationMs != nil {
+			minimumBalance = actual
+		}
 		updated := tx.Model(&model.CreditAccount{}).
-			Where("user_id = ?", order.UserID).
+			Where("user_id = ? AND available_microcredits >= ?", order.UserID, minimumBalance).
 			Updates(map[string]any{
 				"available_microcredits": gorm.Expr("available_microcredits - ?", actual),
 				"version":                gorm.Expr("version + 1"),
@@ -580,7 +647,30 @@ func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID st
 			return updated.Error
 		}
 		if updated.RowsAffected != 1 {
-			return errors.New("credit account does not exist")
+			if durationMs != nil {
+				var account model.CreditAccount
+				if err := tx.First(&account, "user_id = ?", order.UserID).Error; err != nil {
+					return err
+				}
+				if account.AvailableMicrocredits < actual {
+					reviewUpdates := map[string]any{"status": model.BillingStatusUncertain,
+						"error":    "实际运行时间补扣余额不足，已退款积分不再冻结，需人工核对",
+						"quantity": quantity, "provider_request_id": providerRequestID, "updated_at": time.Now()}
+					if order.CostBillingMode == "per_second" {
+						reviewUpdates["cost_quantity"] = quantity
+					}
+					changed := tx.Model(&model.BillingOrder{}).Where("id = ? AND status = ?", order.ID, order.Status).Updates(reviewUpdates)
+					if changed.Error != nil {
+						return changed.Error
+					}
+					if changed.RowsAffected != 1 {
+						return ErrBillingStateConflict
+					}
+					reviewRequired = true
+					return nil
+				}
+			}
+			return errors.New("credit account missing or restored balance would overflow")
 		}
 
 		var account model.CreditAccount
@@ -600,6 +690,12 @@ func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID st
 		if providerRequestID != "" {
 			orderUpdates["provider_request_id"] = providerRequestID
 		}
+		if durationMs != nil {
+			orderUpdates["quantity"] = quantity
+			if order.CostBillingMode == "per_second" {
+				orderUpdates["cost_quantity"] = quantity
+			}
+		}
 		if usage != nil {
 			orderUpdates["input_tokens"] = usage.InputTokens
 			orderUpdates["output_tokens"] = usage.OutputTokens
@@ -608,7 +704,7 @@ func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID st
 			orderUpdates["usage_source"] = usageSource
 		}
 		orderUpdate := tx.Model(&model.BillingOrder{}).
-			Where("id = ? AND status = ?", order.ID, model.BillingStatusRefunded).
+			Where("id = ? AND status = ?", order.ID, order.Status).
 			Updates(orderUpdates)
 		if orderUpdate.Error != nil {
 			return orderUpdate.Error
@@ -618,6 +714,9 @@ func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID st
 		}
 
 		consumeNote := "人工查询确认上游成功，退款订单重新扣费"
+		if durationMs != nil {
+			consumeNote = "确认上游成功，退款订单按实际运行时间重新扣费"
+		}
 		if usageSource == billingUsageSourceVideoFormula {
 			consumeNote += "；按提交时的视频 Token 公式快照结算"
 		}
@@ -639,6 +738,13 @@ func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID st
 			Note:                       consumeNote,
 		}).Error
 	})
+	if err != nil {
+		return err
+	}
+	if reviewRequired {
+		return ErrInsufficientCredits
+	}
+	return nil
 }
 
 func zeroPricedTokenOrder(order model.BillingOrder) bool {
@@ -646,6 +752,39 @@ func zeroPricedTokenOrder(order model.BillingOrder) bool {
 		order.InputTokenPriceMicrocredits == 0 &&
 		order.OutputTokenPriceMicrocredits == 0 &&
 		order.CachedTokenPriceMicrocredits == 0
+}
+
+// CloseRefundedRuntimeBillingReview records an operator's decision to keep the
+// original refund. Its reservation was already released; no money moves here.
+func (r *Repository) CloseRefundedRuntimeBillingReview(id, actorUserID, note string) error {
+	if strings.TrimSpace(actorUserID) == "" || strings.TrimSpace(note) == "" {
+		return errors.New("runtime billing review requires an operator and a note")
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var order model.BillingOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&order, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if order.Capability != "video" || order.BillingMode != "per_second" ||
+			order.RefundedAt == nil || order.ActualAmountMicrocredits != 0 || order.SettledAt != nil || order.RefundedAmountMicrocredits != order.AmountMicrocredits {
+			return ErrBillingStateConflict
+		}
+		if order.Status == model.BillingStatusRefunded && order.ResolvedBy != "" {
+			return nil
+		}
+		if order.Status != model.BillingStatusUncertain {
+			return ErrBillingStateConflict
+		}
+		updated := tx.Model(&model.BillingOrder{}).Where("id = ? AND status = ?", id, order.Status).
+			Updates(map[string]any{"status": model.BillingStatusRefunded, "error": "", "resolved_by": actorUserID, "resolution_note": note, "updated_at": time.Now()})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return ErrBillingStateConflict
+		}
+		return nil
+	})
 }
 
 func (r *Repository) RefundBillingOrder(id string, errorText string) error {
@@ -659,6 +798,11 @@ func (r *Repository) RefundBillingOrder(id string, errorText string) error {
 		}
 		if order.Status == model.BillingStatusSettled {
 			return errors.New("settled billing order requires a manual refund")
+		}
+		// An uncertain runtime recovery may already have returned the entire
+		// reservation. Never refund it again using another order's held credits.
+		if order.Status == model.BillingStatusUncertain && order.Capability == "video" && order.BillingMode == "per_second" && order.RefundedAt != nil {
+			return ErrBillingStateConflict
 		}
 		updated := tx.Model(&model.CreditAccount{}).
 			Where("user_id = ? AND reserved_microcredits >= ?", order.UserID, order.AmountMicrocredits).

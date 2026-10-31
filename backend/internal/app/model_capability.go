@@ -95,6 +95,8 @@ type ParameterSupport struct {
 }
 
 type VideoCapabilityConfig struct {
+	// ExecutionTier selects the server-configured compute tier independently of output resolution.
+	ExecutionTier     string                 `json:"executionTier,omitempty"`
 	References        VideoReferenceConfig   `json:"references"`
 	Duration          VideoDurationConfig    `json:"duration"`
 	DurationSupported *bool                  `json:"durationSupported,omitempty"`
@@ -269,6 +271,11 @@ func NormalizeModelCapabilityConfigForModel(capability string, protocol string, 
 		return nil, BadAuthRequest("请配置视频模型能力参数")
 	}
 	video := applyModelSpecificVideoCapability(input.Video, protocol, modelName)
+	if strings.TrimSpace(protocol) == string(model.ChannelInterfaceRunningHubVideo) {
+		if _, err := runningHubInstanceType(video.ExecutionTier); err != nil {
+			return nil, BadAuthRequest(err.Error())
+		}
+	}
 	if strings.TrimSpace(protocol) == "autodl-comfyui" {
 		var err error
 		video, err = normalizeAutoDLVideoScreenSpec(video, modelName)

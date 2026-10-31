@@ -2,7 +2,11 @@ package runninghub
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -11,6 +15,8 @@ const (
 	DefaultBaseURL = "https://www.runninghub.ai"
 	WorkflowID     = "2112923637551575042"
 )
+
+var ErrTaskNotFound = errors.New("RunningHub 无法找到原任务，费用需人工核对")
 
 // NodeInput is the small, stable part of RunningHub v2 nodeInfoList. Keeping
 // this separate from the full ComfyUI graph lets the provider evolve its
@@ -68,6 +74,7 @@ type Response struct {
 	ErrorMessage string   `json:"errorMessage,omitempty"`
 	Results      []Result `json:"results,omitempty"`
 	Usage        Usage    `json:"usage,omitempty"`
+	PromptTips   string   `json:"promptTips,omitempty"`
 }
 
 func SubmitPath(workflowID string) string {
@@ -94,12 +101,27 @@ func NormalizeStatus(value string) string {
 }
 
 func ResultURL(response Response) string {
+	var fallback string
 	for _, result := range response.Results {
-		if strings.TrimSpace(result.URL) != "" {
-			return strings.TrimSpace(result.URL)
+		value := strings.TrimSpace(result.URL)
+		kind := strings.ToLower(strings.TrimSpace(result.OutputType))
+		if kind == "" {
+			parsed, err := url.Parse(value)
+			if err == nil {
+				kind = strings.TrimPrefix(strings.ToLower(path.Ext(parsed.Path)), ".")
+			}
+		}
+		if value == "" || (kind != "mp4" && kind != "webm" && kind != "mov" && kind != "mkv" && !strings.HasPrefix(kind, "video/")) {
+			continue
+		}
+		if result.NodeID == "364" {
+			return value
+		}
+		if fallback == "" {
+			fallback = value
 		}
 	}
-	return ""
+	return fallback
 }
 
 func RuntimeSeconds(value any) (float64, bool) {
@@ -122,7 +144,7 @@ func RuntimeSeconds(value any) (float64, bool) {
 	default:
 		return 0, false
 	}
-	if seconds < 0 {
+	if seconds < 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
 		return 0, false
 	}
 	return seconds, true
@@ -131,6 +153,27 @@ func RuntimeSeconds(value any) (float64, bool) {
 func ValidateResponse(response Response) error {
 	if strings.TrimSpace(response.TaskID) == "" {
 		return fmt.Errorf("RunningHub response missing taskId")
+	}
+	// A cancelled live task can disappear from v2 query. Absence is not a
+	// confirmed cancellation and must never become evidence for a refund.
+	if strings.TrimSpace(response.Status) == "" && response.ErrorCode == "1004" {
+		return ErrTaskNotFound
+	}
+	switch NormalizeStatus(response.Status) {
+	case "queued", "running", "succeeded", "failed", "cancelled":
+	default:
+		return fmt.Errorf("RunningHub 响应缺少可识别的任务状态")
+	}
+	if strings.TrimSpace(response.PromptTips) != "" {
+		var validation struct {
+			Result *bool `json:"result"`
+		}
+		if json.Unmarshal([]byte(response.PromptTips), &validation) != nil || validation.Result == nil {
+			return fmt.Errorf("RunningHub 工作流校验响应无效")
+		}
+		if !*validation.Result {
+			return fmt.Errorf("RunningHub 工作流节点校验失败，请检查参考素材和生成参数")
+		}
 	}
 	if NormalizeStatus(response.Status) == "succeeded" && ResultURL(response) == "" {
 		return fmt.Errorf("RunningHub success response missing result URL")
