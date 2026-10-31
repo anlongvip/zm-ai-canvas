@@ -60,7 +60,7 @@ func hasExecutableProviderVideoConfig(input map[string]any) bool {
 		if stringValue(config["workflowId"]) == "" && stringValue(config["webappId"]) == "" && stringValue(config["model"]) == "" {
 			return false
 		}
-		return stringValue(config["baseUrl"]) != "" && stringValue(config["apiKey"]) != ""
+		return stringValue(config["channelId"]) != "" || (stringValue(config["baseUrl"]) != "" && stringValue(config["apiKey"]) != "")
 	}
 	if stringValue(config["model"]) == "" {
 		return false

@@ -286,6 +286,13 @@ func (s *Service) ValidateTaskCapability(input map[string]any) error {
 		if err := validateWorkflowProviderPromptLength(taskInput); err != nil {
 			return err
 		}
+		if strings.TrimSpace(taskInput.Config.ChannelID) != "" {
+			resolved, err := s.resolveProviderConfig(taskInput.Config)
+			if err != nil {
+				return err
+			}
+			taskInput.Config = resolved
+		}
 		return validateWorkflowProviderConfig(taskInput.Mode, taskInput.Config)
 	}
 	// 普通音频模型沿用主线的能力校验路径；当前专用能力表只覆盖图片和视频。

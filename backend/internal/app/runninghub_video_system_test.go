@@ -46,6 +46,19 @@ func TestRunningHubAdminModelTestUsesWorkflowEndpoint(t *testing.T) {
 	}
 }
 
+func TestRunningHubSystemVideoAdmissionDoesNotRequireClientSecrets(t *testing.T) {
+	input := map[string]any{"mode": "video", "config": map[string]any{
+		"interfaceType": "runninghub-workflow-video", "model": runninghub.WorkflowID, "channelId": "system-test",
+	}}
+	if !hasExecutableProviderVideoConfig(input) {
+		t.Fatal("system video configuration must resolve credentials on the server")
+	}
+	delete(input["config"].(map[string]any), "channelId")
+	if hasExecutableProviderVideoConfig(input) {
+		t.Fatal("custom workflow without credentials must remain invalid")
+	}
+}
+
 func TestRunningHubSystemJSONUsesBearerAuthorizationAndJSONBody(t *testing.T) {
 	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
