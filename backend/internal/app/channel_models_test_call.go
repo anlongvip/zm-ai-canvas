@@ -140,7 +140,12 @@ func (s *Service) TestAdminChannelModel(ctx context.Context, actor *model.User, 
 		if errors.Is(err, context.DeadlineExceeded) {
 			status = http.StatusGatewayTimeout
 		}
-		return nil, WrapAppError(status, "模型测试失败："+providerUserFacingErrorMessage(err), err)
+		message := "模型测试失败：" + providerUserFacingErrorMessage(err)
+		var upstream providerHTTPError
+		if errors.As(err, &upstream) && isRunningHubInterface(string(protocol)) {
+			message += "；RunningHub 原始响应：" + sanitizeProviderDiagnostic(upstream.Body)
+		}
+		return nil, WrapAppError(status, message, err)
 	}
 	return &AdminChannelModelTestResult{DurationMs: time.Since(startedAt).Milliseconds()}, nil
 }

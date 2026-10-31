@@ -203,6 +203,15 @@ func providerUserFacingErrorMessage(err error) string {
 	return "连接模型服务失败，请检查渠道地址和网络"
 }
 
+func sanitizeProviderDiagnostic(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "（上游未返回正文）"
+	}
+	value = strings.ReplaceAll(value, "Bearer ", "Bearer [REDACTED] ")
+	return truncateRunes(value, 500)
+}
+
 // providerPayloadErrorCategory 把上游失败正文归类为固定的用户可见原因。
 // 第二个返回值为 false 表示正文无法归类，调用方应退回到更通用的提示，
 // 不要因为归类失败就把正文本身当作错误信息。
