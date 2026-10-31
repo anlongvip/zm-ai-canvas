@@ -728,7 +728,7 @@ export function CreationAttachmentThumbnail({ item, onPreview, onRemove }: { ite
             {previewable ? (
                 <button type="button" className="creation-reference-card-preview" onClick={() => onPreview(kind === "video" ? "video" : "image", previewUrl)} aria-label={`放大预览 ${item.name}`} disabled={!previewUrl}>
                     {content}
-                    <span aria-hidden="true">
+                    <span className="creation-reference-card-zoom" aria-hidden="true">
                         <Maximize2 />
                     </span>
                 </button>
