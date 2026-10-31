@@ -125,6 +125,14 @@ func (s *Service) FetchChannelModelCatalog(ctx context.Context, actor *model.Use
 		return nil, err
 	}
 
+	// RunningHub 的 Workflow API 没有 OpenAI 兼容的 GET /models 目录接口。
+	// 它的可用模型由工作流/API 详情页确定，因此必须在通用 /models 请求前
+	// 使用已注册的专用目录插件，否则“拉取模型”会把正常配置误报成 404/502。
+	initModelCatalogPlugins()
+	if discovery := provider.MatchProvider(baseURL, outboundHeadersMap(headers)); discovery != nil && discovery.GetProviderID() == "runninghub" {
+		return extendChannelModelCatalog(baseURL, apiFormat, headers, nil), nil
+	}
+
 	target := apiURL(baseURL, "/models")
 	if apiFormat == "gemini" {
 		if !strings.HasSuffix(strings.ToLower(baseURL), "/v1beta") {
