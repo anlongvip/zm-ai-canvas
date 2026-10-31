@@ -91,23 +91,18 @@ jobs:
           # Web 的构建阶段固定 BUILDPLATFORM，静态文件只编译一次。
           - image: open-ai-canvas-web
             dockerfile: Dockerfile
-            arch: multi
-            platforms: linux/amd64,linux/arm64
+            arch: amd64
+            platforms: linux/amd64
             runner: ubuntu-24.04
           - image: open-ai-canvas-backend
             dockerfile: backend/Dockerfile
             arch: amd64
             platforms: linux/amd64
             runner: ubuntu-24.04
-          - image: open-ai-canvas-backend
-            dockerfile: backend/Dockerfile
-            arch: arm64
-            platforms: linux/arm64
-            runner: ubuntu-24.04-arm
           - image: open-ai-canvas-yingce-agent
             dockerfile: yingce-agent/Dockerfile
-            arch: multi
-            platforms: linux/amd64,linux/arm64
+            arch: amd64
+            platforms: linux/amd64
             runner: ubuntu-24.04
     env:
       IMAGE: ghcr.io/${{ needs.prepare.outputs.owner }}/${{ matrix.image }}
@@ -198,7 +193,7 @@ jobs:
           IMAGE: ghcr.io/${{ needs.prepare.outputs.owner }}/${{ matrix.image }}
           VERSION_TAG: ${{ needs.prepare.outputs.image_tag }}
           DIGEST_DIR: ${{ runner.temp }}/digests
-          EXPECTED_DIGESTS: ${{ matrix.image == 'open-ai-canvas-backend' && '2' || '1' }}
+          EXPECTED_DIGESTS: '1'
         run: bash .github/scripts/promote-image.sh
 
   release:

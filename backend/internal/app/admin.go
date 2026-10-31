@@ -262,10 +262,12 @@ func publicChannel(channel model.ModelChannel, admin bool, channelModels []model
 	proxyURL := ""
 	var headers []OutboundHeader
 	if channel.Scope == model.ChannelScopeSystem {
-		if !admin {
-			apiKey = "system"
-			baseURL = "/api/ai/system/" + channel.ID
-		}
+		// The public model projection must always use the authenticated system
+		// proxy, including for administrators. Admin pages use the dedicated
+		// channel management endpoints for the real Base URL and credentials;
+		// generation requests must never expose or bypass those credentials.
+		apiKey = "system"
+		baseURL = "/api/ai/system/" + channel.ID
 		if admin {
 			headers, _ = ParseOutboundHeadersJSON(channel.HeadersJSON)
 		}
