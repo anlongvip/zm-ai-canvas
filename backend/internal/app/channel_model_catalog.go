@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"yingce/backend/internal/model"
+	"yingce/backend/internal/provider"
 )
 
 type ChannelModelsRequest struct {
