@@ -1,7 +1,8 @@
 package provider
 
-// ModelCatalogPlugin 只补充标准 /models 没有暴露的厂商目录项。
-// 标准目录请求、鉴权和出站安全边界仍由 service 统一负责。
+// ModelCatalogPlugin 提供厂商目录能力，既可以补充标准 /models 目录，
+// 也可以为没有 /models 接口的厂商直接提供固定目录项。
+// 鉴权和出站安全边界仍由 service 统一负责。
 type ModelCatalogPlugin interface {
 	// GetProviderID 返回服务商唯一标识
 	GetProviderID() string
