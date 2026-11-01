@@ -6,6 +6,7 @@
 package repository
 
 import (
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -36,7 +37,36 @@ func (r *Repository) UserOSSSettingForUser(userID string, id string) (*model.Use
 }
 
 func (r *Repository) CreateUserOSSSetting(setting *model.UserOSSSetting) error {
-	return r.db.Create(setting).Error
+	if setting == nil || setting.ID == "" || setting.UserID == "" {
+		return gorm.ErrInvalidData
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		switch tx.Dialector.Name() {
+		case "postgres":
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?)::bigint)", "user-oss-settings:"+setting.UserID).Error; err != nil {
+				return err
+			}
+		case "sqlite":
+			if err := tx.Exec("UPDATE user_oss_settings SET created_at = created_at WHERE 1 = 0").Error; err != nil {
+				return err
+			}
+		default:
+			return gorm.ErrInvalidData
+		}
+		var previous model.UserOSSSetting
+		err := tx.Select("created_at").Where("user_id = ?", setting.UserID).Order("created_at desc, id desc").First(&previous).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		// PostgreSQL timestamps have microsecond precision. Serialize appends and
+		// advance ties so a random ID never makes a saved version look older.
+		createdAt := tx.NowFunc().UTC().Truncate(time.Microsecond)
+		if err == nil && !createdAt.After(previous.CreatedAt) {
+			createdAt = previous.CreatedAt.Add(time.Microsecond)
+		}
+		setting.CreatedAt = createdAt
+		return tx.Create(setting).Error
+	})
 }
 
 func (r *Repository) StorageLocation(id string) (*model.StorageLocation, error) {

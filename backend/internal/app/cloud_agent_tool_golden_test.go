@@ -57,6 +57,7 @@ func assertCloudAgentGolden(t *testing.T, path string, got []byte) {
 	if err != nil {
 		t.Fatalf("缺少 golden 文件 %s（UPDATE_GOLDEN=1 生成）：%v", path, err)
 	}
+	want = bytes.ReplaceAll(want, []byte("\r\n"), []byte("\n"))
 	if !bytes.Equal(want, got) {
 		t.Fatalf("%s 与当前输出不一致；确认是有意改契约后用 UPDATE_GOLDEN=1 更新", path)
 	}

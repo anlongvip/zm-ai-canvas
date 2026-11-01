@@ -1,6 +1,7 @@
 package hostupdate
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
 	"context"
@@ -13,7 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -556,13 +557,175 @@ func (m *Manager) restoreDatabase(backup Backup) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), m.config.StepTimeout)
 	defer cancel()
-	args := []string{"compose", "--env-file", m.envPath(), "-f", m.composePath(), "exec", "-T", "postgres", "pg_restore", "-U", postgresUser, "-d", postgresDB, "--no-owner", "--no-privileges"}
+	args := []string{"compose", "--project-name", composeProjectName(m.config.InstallDir), "--env-file", m.envPath(), "-f", m.composePath(), "exec", "-T", "postgres", "pg_restore", "-U", postgresUser, "-d", postgresDB, "--no-owner", "--no-privileges", "--exit-on-error"}
 	var stderr bytes.Buffer
 	command := execCommandWithInput{runner: m.runner, input: reader}
 	if err := command.Run(ctx, "docker", args, []string{"CANVAS_IMAGE_TAG=" + strings.TrimPrefix(backup.Version, "v")}, io.Discard, &stderr); err != nil {
-		return fmt.Errorf("恢复 PostgreSQL：%s", strings.TrimSpace(stderr.String()))
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("恢复 PostgreSQL：%s", message)
 	}
 	return nil
+}
+
+func (m *Manager) restoreBackendData(backup Backup) error {
+	if err := validateBackendDataBackup(backup); err != nil {
+		return err
+	}
+	archive, err := zip.OpenReader(backup.Path)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	var dataTar *zip.File
+	for _, entry := range archive.File {
+		if entry.Name == "backend-data.tar" {
+			dataTar = entry
+			break
+		}
+	}
+	if dataTar == nil {
+		return errors.New("备份中不存在 backend-data.tar")
+	}
+	reader, err := dataTar.Open()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	inputRunner, ok := m.runner.(inputCommandRunner)
+	if !ok {
+		return errors.New("当前命令执行器不支持恢复数据目录")
+	}
+	if err := m.compose(m.composePath(), backup.Version, m.config.StepTimeout, nil, "run", "--rm", "--no-deps", "--pull", "never", "-T", "--user", "root", "--entrypoint", "sh", "backend", "-c", `for entry in /data/* /data/.[!.]* /data/..?*; do [ -e "$entry" ] || [ -L "$entry" ] || continue; rm -rf "$entry" || exit; done`); err != nil {
+		return fmt.Errorf("清理待恢复 Backend 数据目录：%w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), m.config.StepTimeout)
+	defer cancel()
+	args := []string{"compose", "--project-name", composeProjectName(m.config.InstallDir), "--env-file", m.envPath(), "-f", m.composePath(), "run", "--rm", "--no-deps", "--pull", "never", "-T", "--user", "root", "--entrypoint", "tar", "backend", "-C", "/data", "-xf", "-"}
+	var stderr bytes.Buffer
+	err = inputRunner.RunWithInput(ctx, "docker", args, []string{"CANVAS_IMAGE_TAG=" + strings.TrimPrefix(backup.Version, "v")}, reader, io.Discard, &stderr)
+	if err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("恢复 Backend 数据目录：%s", message)
+	}
+	return nil
+}
+
+func validateBackendDataBackup(backup Backup) error {
+	if err := verifyZipBackup(backup.Path, backup.Checksum); err != nil {
+		return fmt.Errorf("拒绝恢复未通过校验的备份数据目录：%w", err)
+	}
+	archive, err := zip.OpenReader(backup.Path)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	for _, entry := range archive.File {
+		if entry.Name != "backend-data.tar" {
+			continue
+		}
+		reader, err := entry.Open()
+		if err != nil {
+			return err
+		}
+		validateErr := validateBackendDataTar(reader)
+		closeErr := reader.Close()
+		if validateErr != nil {
+			return fmt.Errorf("拒绝恢复不安全的数据目录备份：%w", validateErr)
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		return nil
+	}
+	return errors.New("备份中不存在 backend-data.tar")
+}
+
+func validateBackendDataTar(source io.Reader) error {
+	archive := tar.NewReader(source)
+	entries := make(map[string]byte)
+	hardLinks := make(map[string]string)
+	for {
+		header, err := archive.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		name, err := cleanTarPath(header.Name)
+		if err != nil {
+			return fmt.Errorf("无效条目路径 %q：%w", header.Name, err)
+		}
+		if name == "." && header.Typeflag != tar.TypeDir {
+			return fmt.Errorf("数据目录根条目必须是目录：%q", header.Name)
+		}
+		if _, exists := entries[name]; exists {
+			return fmt.Errorf("重复条目路径：%q", header.Name)
+		}
+		entries[name] = header.Typeflag
+		switch header.Typeflag {
+		case tar.TypeReg, tar.TypeRegA, tar.TypeDir:
+		case tar.TypeSymlink:
+			// 拒绝含父目录分量的目标，避免链接链使词法归一化失效。
+			if _, err := cleanTarPath(header.Linkname); err != nil {
+				return fmt.Errorf("无效符号链接 %q：%w", header.Name, err)
+			}
+		case tar.TypeLink:
+			target, err := cleanTarPath(header.Linkname)
+			if err != nil {
+				return fmt.Errorf("无效硬链接 %q：%w", header.Name, err)
+			}
+			hardLinks[name] = target
+		default:
+			return fmt.Errorf("不支持的条目类型 %d：%q", header.Typeflag, header.Name)
+		}
+		if _, err := io.Copy(io.Discard, archive); err != nil {
+			return fmt.Errorf("读取条目 %q：%w", header.Name, err)
+		}
+	}
+	if len(entries) == 0 {
+		return errors.New("数据目录 tar 为空")
+	}
+	// 在读取完整归档后检查，以覆盖链接先于或晚于其子条目的情况。
+	for name := range entries {
+		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+			if kind, exists := entries[parent]; exists && kind != tar.TypeDir {
+				return fmt.Errorf("条目 %q 的父路径 %q 不是目录", name, parent)
+			}
+		}
+	}
+	for name, target := range hardLinks {
+		kind, exists := entries[target]
+		if !exists || (kind != tar.TypeReg && kind != tar.TypeRegA) {
+			return fmt.Errorf("硬链接 %q 必须指向归档内的普通文件", name)
+		}
+	}
+	return nil
+}
+
+func cleanTarPath(name string) (string, error) {
+	if strings.TrimSpace(name) == "" {
+		return "", errors.New("路径不能为空")
+	}
+	if path.IsAbs(name) {
+		return "", errors.New("不能是绝对路径")
+	}
+	for _, component := range strings.Split(name, "/") {
+		if component == ".." {
+			return "", errors.New("路径不能包含父目录分量")
+		}
+	}
+	clean := path.Clean(name)
+	if clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", errors.New("路径不能离开数据目录")
+	}
+	return clean, nil
 }
 
 type execCommandWithInput struct {
@@ -571,17 +734,11 @@ type execCommandWithInput struct {
 }
 
 func (c execCommandWithInput) Run(ctx context.Context, name string, args, environment []string, stdout, stderr io.Writer) error {
-	runner, ok := c.runner.(execRunner)
+	runner, ok := c.runner.(inputCommandRunner)
 	if !ok {
 		return errors.New("当前命令执行器不支持标准输入")
 	}
-	command := exec.CommandContext(ctx, name, args...)
-	command.Dir = runner.dir
-	command.Env = append(os.Environ(), environment...)
-	command.Stdin = c.input
-	command.Stdout = stdout
-	command.Stderr = stderr
-	return command.Run()
+	return runner.RunWithInput(ctx, name, args, environment, c.input, stdout, stderr)
 }
 
 func (m *Manager) verifyHealthy(targetVersion string) error {

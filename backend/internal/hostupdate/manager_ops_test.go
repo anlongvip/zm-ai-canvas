@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -41,12 +42,14 @@ func TestSetEnvValuePreservesOtherSettings(t *testing.T) {
 	if !strings.Contains(value, "# keep\n") || !strings.Contains(value, "POSTGRES_DB=canvas\n") || !strings.Contains(value, "CANVAS_IMAGE_TAG=1.2.2-preview.1\n") {
 		t.Fatalf("unexpected env contents: %q", value)
 	}
-	stat, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stat.Mode().Perm() != 0o640 {
-		t.Fatalf("mode=%o, want 640", stat.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		stat, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stat.Mode().Perm() != 0o640 {
+			t.Fatalf("mode=%o, want 640", stat.Mode().Perm())
+		}
 	}
 }
 
