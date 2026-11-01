@@ -4,7 +4,7 @@
 
 将 RunningHub 工作流 `2112923637551575042` 接入影策系统视频模型，使视频工作台、画布和自动做剧可以统一选择并调用该模型。
 
-开发基线：`codex/runninghub-phase1-complete`；生产已通过 Host Updater 升级到 `v1.7.3.4`，backend、web、yingce-agent 的实际 revision 均为 `1bb9c3ec5ec84b657f63ed78157c7fc0e2a170db`，镜像按 Release digest 固定。五服务 healthy、重启计数均为 0，Host Updater active，公开 readiness 为 `ready=true`、schema `77/77`。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。原三参考任务请求详情已在新版生产页面复验，上游编号与实收正确。结算后的余额动态刷新已通过真实 Standard 任务；平台取消或失败终态退款仍待真实验收。
+开发基线：`codex/runninghub-phase1-complete`；集中修复已通过 PR #5 合入，生产已通过 Host Updater 升级到 `v1.7.3.6`，backend、web、yingce-agent 的实际 revision 均为 `11b4f379d0bd4fac8d031c6cbb0bcf5a34b6a0c8`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。结算后的余额动态刷新已通过真实 Standard 任务；新版原小球视频、历史结算及余额只读复验通过。正式产品镜像的隔离迁移失败、启动失败及 readiness 异常回退已通过。活动 Agent 验收发现最终会话保存缺口，修复后的本地二进制已通过隔离回退测试，尚未发布到生产；复杂 Agent 排空及平台真实退款等边界仍待验收。
 
 ## RunningHub 配置
 
@@ -200,7 +200,45 @@ Release 的四项资产均已下载并匹配 GitHub 公布的文件摘要；两�
 
 刷新后的真实后台显示 `v1.7.3.4` 和更新成功。打开原请求 `b79c620553023eed3ff65ab0c53d9dcb`，页面同时显示平台任务 `c880006c9d3e4ea38040735a1dcb434f`、供应商任务 `2116721575328051201`、任务成功、预授权 0.0125、实收 1.0175 积分、已结算。未重写历史请求或账务。升级与请求详情截图保存在本地忽略目录，文件名为 `production-v1.7.3.4-update.png` 和 `production-v1.7.3.4-request-detail.png`。
 
-剩余验收仍为：真实结算事件中页面不刷新自动更新余额、有平台账单关联的真实取消或失败终态自动退款。既有 8 笔均已成功结算，不能用旧请求详情或上游直接取消零费用替代上述证据；不为验收造记录、调整用户资金或放开生成阶段取消限制。
+该阶段尚缺余额动态刷新和平台退款的真实证据；随后真实 Standard 任务已通过余额动态刷新验收。当前仍缺有平台账单关联的真实取消或失败终态自动退款证据，不能用旧请求详情或上游直接取消零费用替代；不为验收造记录、调整用户资金或放开生成阶段取消限制。
+
+### 集中回归、正式发布与 v1.7.3.6 生产复验
+
+Host Updater 现已在回退时先停止 Web、Backend、Agent，校验并恢复最终 ZIP 中的旧部署配置、PostgreSQL 与数据目录，再启动旧服务。恢复失败立即进入人工介入；旧服务启动部分失败或健康验证失败时再次尝试停止业务服务。补充 tar 路径、链接祖先、重复成员和特殊成员校验。真实隔离 Docker Compose/PostgreSQL 17 六场景故障注入通过，耗时 162.79 秒、退出码 0，临时容器及卷已清理。业务容器为轻量替身，镜像仓库和 HTTP 健康响应模拟；不能替代真实产品迁移失败、Agent 排空及生产故障验收。
+
+用户 OSS 配置同一保存时间可能因随机 ID 排序选回旧版本，已确定性复现并修复。事务内按用户串行化，以微秒递增时间保持版本顺序；覆盖时钟回退、失败回滚、用户隔离及历史内容不变，不修改表结构或重写历史凭证。真实独立 PostgreSQL 17 八并发保存连续三轮通过，已纳入 CI 依赖必跑检查。
+
+Windows 后端最终回归其余 37 包无失败、App 四分片共 1388 项通过，5 项按环境跳过；同时修复 SQLite 测试隔离/连接关闭、CRLF golden/Python 哈希、Winsock 连接重置分类及 Agent 手动推进测试竞争。PR #5 检查 run `41321446752`、主线发布 run `41322025085` 与 tag 发布 run `41322085310` 全部成功，7 项 PostgreSQL/Redis 依赖测试实际执行通过。正式 Release `v1.7.3.6` 指向 `11b4f379d0bd4fac8d031c6cbb0bcf5a34b6a0c8`；tag 复用同 SHA 主线检查。
+
+生产更新操作 `48f1be0774f742de9f0f0822` 于北京时间 2026-11-01 23:53:00 成功，从 `v1.7.3.5` 完成镜像准备、停服、最终备份、迁移、三镜像切换及 30 秒稳定窗口。三个业务容器实际 revision 与 Release 一致，五服务 healthy、Host Updater active。运行更新器 amd64 SHA-256 为 `c04b54217bbf40a247ccc43f723f8bf23986e60344aa157d879723b8ec26b085`，与 Release 一致；旧二进制和备份保留。
+
+最终备份 `backup-20261101-155121` 为 1070990219 字节，来源 `v1.7.3.5`；独立 SHA-256 为 `1ffaf8875ca80399eab57edb94143595fc846f0de63f66d5e4e59898e83ac000`，与更新器记录一致，ZIP 全项 CRC 通过。数据库 dump 为 2680733 字节，数据 tar 为 1068308992 字节。该 dump 已在无网络临时 PostgreSQL 17 中通过 `pg_restore --exit-on-error` 实际恢复，得到 130 张公共表；原小球与三参考任务的上游编号、成功/结算状态及实收分别为 237500、1017500 microcredits，9 笔渠道订单的可用积分净变化与实收一致、冻结净变化为 0。数据 tar 的 635 个成员全部读取，文件内容 1067733401 字节、配置密钥文件存在，未打印内容；临时容器及卷已清理。数据 tar 未落盘还原，不能将本次检查写成完整生产回退验收；证据为本地忽略目录中的 `production-v1.7.3.6-backup-restore.jpg`。
+
+升级后刷新后台显示当前版本和最新发布均为 `v1.7.3.6`、更新成功；readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。创作历史保留原小球任务与三参考任务，分别显示 0.2375、1.0175 积分、已结算，余额 104.18、运行中 0。原小球结果保留运行时间 95 秒、`consumeMoney=0.019`，视频解码 1280×736、5.166667 秒，播放至结尾，`ended=true`、`readyState=4`、`error=null`。本次复验没有新增收费任务或修改账务。升级与播放证据分别为本地忽略目录中的 `production-v1.7.3.6.jpg`、`production-v1.7.3.6-video.jpg`。
+
+### 正式产品镜像隔离回退验收
+
+新增 opt-in `backend/internal/hostupdate/manager_product_integration_test.go`，直接运行已发布 `v1.7.3.6` 的 Backend、Web、Agent 与正式六服务 Compose。使用新建的独立项目、内部网络、空 PostgreSQL 17/Redis 及数据卷，不读取生产 `.env`、密钥或业务数据；每服务限制 512 MB，Web 也不发布宿主机端口。健康检查由 Agent 容器中的 Node 访问真实 Web HTTP 接口，保留实际响应状态和正文。
+
+三个场景均调用实际更新器恢复实现：停服与最终 ZIP 备份后破坏迁移校验和，让真实 `migrate-schema up` 失败；将目标 Backend 的数据库驱动改成非法值，让真实启动失败；删除隔离数据库最新 schema 记录，让真实 readiness 返回 HTTP 503，再调用健康超时后的同一回退入口。恢复后逐一核对 SQL 原始标记、数据文件、配置密钥 SHA-256 和实际版本健康，并核对旧 Backend 优雅停服日志。三场景首轮完整通过耗时 261.11 秒、退出码 0；测试容器、卷和网络均清理，生产五服务保持 healthy，没有新增收费生成。
+
+随后补充具体故障原因断言：迁移必须报告 schema 校验和不一致，目标后端必须报告非法数据库驱动，避免将其他进程错误当成故障覆盖。最终程序 SHA-256 为 `bb51eef6f17cc124301c997b48163095456303ae84d8d0748ffbbc7a31101692`；三场景再次全部通过，总耗时 273.97 秒，分别为 80.45 / 89.74 / 103.77 秒、退出码 0。容器、卷及网络再次清理，生产五服务 healthy、Host Updater active；截图保存在本地忽略目录 `product-rollback-pass.jpg`。Windows 更新器整包测试与 `go vet` 通过；产品镜像 opt-in 在 Windows 默认跳过，实际运行依据为该 Linux 结果。
+
+这套测试仅在同一固定版本内注入故障，使用缓存镜像及本地 Compose 替代远端下载；不是跨版本升级或生产故障实测。readiness 场景未等待完整 10 分钟重试循环；空闲停服也不能证明活动 Agent 会话已安全排空。运行需明确设置 `CANVAS_HOSTUPDATE_PRODUCT_TEST=1`、`CANVAS_HOSTUPDATE_PRODUCT_COMPOSE`、`CANVAS_HOSTUPDATE_PRODUCT_VERSION`、`CANVAS_HOSTUPDATE_PRODUCT_REPOSITORY`，再执行 `go test ./internal/hostupdate -run '^TestProductContainerRollback$' -count=1 -v -timeout=12m`。默认跳过仅表示未启用产品镜像测试，不能记作通过。
+
+### 活动 Agent 最终回答排空与回退
+
+新增 opt-in `TestProductActiveAgentRollback`：正式六服务 Compose 额外运行仅在内部网络可达的模拟模型上游，使用独立空库、测试身份、真实后台 API、远程 Agent、模型任务 Worker 与账务。确认 Agent `active=1` 后保持模型响应挂起；等 Backend 主 HTTP 关闭，再释放响应，随后执行实际最终备份、迁移校验失败及回退。没有使用生产凭证、素材、配置或资金，没有访问 RunningHub。
+
+未修复的 `v1.7.3.6` 复现最终会话 JSONL 缺少回答，尽管模型任务已经成功结算且有优雅停服日志。原因是原 `StopWorker` 仅等待平台 Worker，未等待独立 Agent 收尾，随后 `Close` 取消了仍在提交会话快照的 Agent；恢复时，旧步骤还可能被已用尽的步骤预算拦截。
+
+修复在 drain 时关闭新 Agent 会话准入，平台 Worker 停止后继续在同一退出期限内等待 Agent 保存检查点；超时仍返回错误，由关闭路径取消并等待剩余会话。模型恢复先接管已创建的步骤任务，再检查新步骤预算，避免为接管重复建单或扣费。未修改数据库结构或 API 合同。
+
+本地 Agent、Worker、恢复与排空专项通过（21.115 秒），Host Updater 与 server 整包通过（4.746 / 6.482 秒），三包 `go vet` 通过。服务器在缓存的正式 `v1.7.3.6` 镜像环境中只读挂载本地交叉编译 Backend 复验，通过耗时 84.59 秒、退出码 0。最终备份前严格得到 `completed:1:999900:0:1`（会话完成、一个成功模型任务、测试余额 999900、冻结 0、一份含最终回答的快照）；回退后仍只调用一次模型、结算一次 100 microcredits。测试容器、卷与网络均清理。
+
+这次使用 PostgreSQL 路径的 `CGO_ENABLED=0` 本地补丁二进制覆盖隔离 Backend，不是新正式镜像发布或生产复验。补丁 SHA-256 为 `8e52cf2df23bce09ef4af9322f43e516c00943cb5a1ab852b72ce205e04f3da0`，测试程序为 `23317a0143fe7bab3dddfab2596ffc89cc75d81f0339d5e87ac7f811b02b9586`；截图为本地忽略目录 `product-agent-rollback-pass.jpg`。生产仍运行未包含这次修复的 `v1.7.3.6`。
+
+当前剩余边界为修复正式发布与生产复验、真实平台取消/失败退款、Agent 多步工具及超时/强制中止恢复、跨版本失败迁移、完整健康超时循环。单次最终回答排空和隔离测试不能替代这些证据；不对生产注入故障，也不为验收追加收费生成。
 
 ## 真实环境配置顺序
 

@@ -118,6 +118,22 @@ func (s *Service) closeCloudAgentPiRunners() {
 	s.piRunnerWg.Wait()
 }
 
+// BeginDrain closes admission under piRunnerMu before this wait, so no runner
+// can be added after the wait starts. Close cancels any remainder on timeout.
+func (s *Service) waitCloudAgentPiRunners(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.piRunnerWg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (s *Service) startApprovedCloudAgentMediaWaiter(userID, runID, mediaTaskID string) {
 	if s == nil || runID == "" || mediaTaskID == "" {
 		return

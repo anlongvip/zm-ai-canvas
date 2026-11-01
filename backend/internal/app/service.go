@@ -229,9 +229,20 @@ func (s *Service) syncAgentSessionLimit() {
 	}
 }
 
-func (s *Service) BeginDrain() { s.backgroundWorkers().BeginDrain() }
+func (s *Service) BeginDrain() {
+	s.piRunnerMu.Lock()
+	s.piRunnersClosed = true
+	s.piRunnerMu.Unlock()
+	s.backgroundWorkers().BeginDrain()
+}
 
-func (s *Service) StopWorker(ctx context.Context) error { return s.backgroundWorkers().Stop(ctx) }
+func (s *Service) StopWorker(ctx context.Context) error {
+	s.BeginDrain()
+	workerErr := s.backgroundWorkers().Stop(ctx)
+	// A settled model task can still be returning through the separate Agent
+	// bridge. Keep that bridge alive until its session checkpoint is persisted.
+	return errors.Join(workerErr, s.waitCloudAgentPiRunners(ctx))
+}
 
 func (s *Service) IsDraining() bool { return s.backgroundWorkers().IsDraining() }
 

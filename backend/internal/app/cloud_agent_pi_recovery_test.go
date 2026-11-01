@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"yingce/backend/internal/model"
+	"yingce/backend/internal/repository"
 )
 
 // 重启恢复：上一个运行时进程已为这一步建好模型任务、任务也已成功，但结果没交回。
@@ -14,7 +15,13 @@ import (
 func TestCloudAgentModelStepAdoptsOrphanedStepTask(t *testing.T) {
 	s, db, a := agentMediaFixture(t)
 	s.disablePiRuntime = true
-	run, _ := agentMediaRun(t, s, a, "auto")
+	run, state := agentMediaRun(t, s, a, "auto")
+	state.Request.Budget.MaxSteps = state.Step + 1
+	if err := s.repo.MutateCloudAgent("user", run.ID, run.Revision, func(current *model.CloudAgentExecution, _ *repository.Repository) error {
+		return cloudAgentSave(current, &state)
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	// 第一个进程：调度这一步，但还没等到结果就"崩溃"。
 	ctx, cancel := context.WithCancel(context.Background())
@@ -70,7 +77,7 @@ func TestCloudAgentModelStepAdoptsOrphanedStepTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := cloudAgentDecode(latest)
+	state, err = cloudAgentDecode(latest)
 	if err != nil {
 		t.Fatal(err)
 	}
