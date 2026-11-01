@@ -59,7 +59,7 @@ describe("生成任务取消边界", () => {
     });
 
     test("进入上游提交阶段后立即隐藏取消入口", () => {
-        for (const stage of ["调用生成模型", "正在连接上游", "上游生成中", "后台仍在生成", "等待上游任务同步", "generating", "submitting", "submitted", "submission_unknown"]) {
+        for (const stage of ["调用生成模型", "正在连接上游", "作品创作中", "上游生成中", "后台仍在生成", "等待上游任务同步", "generating", "submitting", "submitted", "submission_unknown"]) {
             expect(canCancelGenerationTask({ status: "running", stage })).toBe(false);
         }
     });
