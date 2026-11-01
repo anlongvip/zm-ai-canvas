@@ -231,7 +231,7 @@ func (r *Repository) APICallLogTasks(ids []string) ([]model.Task, error) {
 		return []model.Task{}, nil
 	}
 	var tasks []model.Task
-	err := r.db.Select("id", "user_id", "type", "status", "result_json", "media_stage").Where("id IN ?", ids).Find(&tasks).Error
+	err := r.db.Select("id", "user_id", "type", "status", "result_json", "media_stage", "provider_request_id").Where("id IN ?", ids).Find(&tasks).Error
 	return tasks, err
 }
 

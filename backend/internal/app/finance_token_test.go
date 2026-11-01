@@ -105,6 +105,14 @@ func TestEnrichAPICallLogPrefersNewAPIChannel2NestedTaskID(t *testing.T) {
 	}
 }
 
+func TestEnrichAPICallLogReadsRunningHubTopLevelTaskID(t *testing.T) {
+	log := &model.ApiCallLog{Capability: "video", Path: "/openapi/v2/run/workflow/2112923637551575042"}
+	(&Service{}).EnrichAPICallLog(log, []byte(`{"status":"SUCCESS","taskId":"2116721575328051201"}`))
+	if log.ProviderRequestID != "2116721575328051201" || log.ProviderStatus != "success" {
+		t.Fatalf("EnrichAPICallLog() = %#v", log)
+	}
+}
+
 func TestEnrichAPICallLogKeepsUserFacingAndUpstreamFailureDetails(t *testing.T) {
 	log := &model.ApiCallLog{
 		Status:     model.ApiCallStatusFailed,

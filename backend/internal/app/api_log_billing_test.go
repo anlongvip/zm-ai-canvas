@@ -69,6 +69,31 @@ func TestDecorateAPICallLogsUsesBillingOrderSnapshot(t *testing.T) {
 	}
 }
 
+func TestDecorateAPICallLogsFallsBackToTaskProviderRequestID(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+newID()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.User{}, &model.ModelChannel{}, &model.Task{}, &model.BillingOrder{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "user-1", Username: "admin"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Task{ID: "task-1", UserID: "user-1", Type: "canvas_video", Status: model.TaskStatusSucceeded, ProviderRequestID: "runninghub-task-1"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	logs := []model.ApiCallLog{{ID: "log-1", UserID: "user-1", TaskID: "task-1", Capability: "video"}}
+	svc := &Service{repo: repository.New(db)}
+	if err := svc.decorateAPICallLogs(logs); err != nil {
+		t.Fatal(err)
+	}
+	if logs[0].ProviderRequestID != "runninghub-task-1" {
+		t.Fatalf("provider request ID = %q, want task record fallback", logs[0].ProviderRequestID)
+	}
+}
+
 func assertBillingSnapshot(t *testing.T, log model.ApiCallLog, available bool, status model.BillingStatus, reserved int64, settled *int64) {
 	t.Helper()
 	settledMatches := (log.BillingSettledAmount == nil) == (settled == nil) && (settled == nil || *log.BillingSettledAmount == *settled)
