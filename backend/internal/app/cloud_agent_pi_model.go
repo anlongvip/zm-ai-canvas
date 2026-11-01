@@ -214,12 +214,6 @@ func (s *Service) runCloudAgentModelStep(ctx context.Context, userID, runID stri
 		if run.Status == "waiting_approval" && state.Approval != nil {
 			return nil, false, errCloudAgentAwaitingApproval
 		}
-		if cloudAgentStepBudgetExhausted(&state) {
-			// 最终回答之后的插话续步会在这里撞上限；若确实停在最终回答边界，
-			// 按完成收尾而不是把整轮判失败（见 settleCloudAgentPiFinalAnswer）。
-			s.settleCloudAgentPiFinalAnswer(userID, runID)
-			return nil, false, fmt.Errorf("step budget exhausted")
-		}
 		if state.StepLimits, err = s.cloudAgentStepLimits(); err != nil {
 			return nil, false, err
 		}
@@ -246,6 +240,11 @@ func (s *Service) runCloudAgentModelStep(ctx context.Context, userID, runID stri
 		}
 		if released {
 			continue
+		}
+		// 接管已占用预算的旧步骤不产生新任务或订单，不能被新步骤的上限拦截。
+		if cloudAgentStepBudgetExhausted(&state) {
+			s.settleCloudAgentPiFinalAnswer(userID, runID)
+			return nil, false, fmt.Errorf("step budget exhausted")
 		}
 
 		canonical, historyErr := cloudAgentPiCanonicalForModelRequest(messages, state.Canonical)

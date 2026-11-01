@@ -127,6 +127,7 @@ type productContainerRunner struct {
 	observedFailure bool
 	failureDetail   string
 	graceful        bool
+	afterStop       func() error
 }
 
 // Keep every test container on the internal network. Probe the actual Web HTTP
@@ -184,6 +185,13 @@ func (r *productContainerRunner) Run(ctx context.Context, name string, args, env
 			return logErr
 		}
 		r.graceful = r.graceful || strings.Contains(logs.String(), "backend stopped gracefully")
+		if r.afterStop != nil {
+			check := r.afterStop
+			r.afterStop = nil
+			if err := check(); err != nil {
+				return err
+			}
+		}
 	}
 	if err != nil && r.fault == "migration" && strings.HasSuffix(call, " run --rm migrate") {
 		r.failureDetail = strings.TrimSpace(diagnostic.String())

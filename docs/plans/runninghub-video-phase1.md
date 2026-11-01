@@ -4,7 +4,7 @@
 
 将 RunningHub 工作流 `2112923637551575042` 接入影策系统视频模型，使视频工作台、画布和自动做剧可以统一选择并调用该模型。
 
-开发基线：`codex/runninghub-phase1-complete`；集中修复已通过 PR #5 合入，生产已通过 Host Updater 升级到 `v1.7.3.6`，backend、web、yingce-agent 的实际 revision 均为 `11b4f379d0bd4fac8d031c6cbb0bcf5a34b6a0c8`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。结算后的余额动态刷新已通过真实 Standard 任务；新版原小球视频、历史结算及余额只读复验通过。已补充正式产品镜像在隔离环境中的迁移失败、启动失败及 readiness 异常回退验收；平台取消或失败终态退款，以及活动 Agent 排空仍待验收，不能用隔离测试代替生产证据。
+开发基线：`codex/runninghub-phase1-complete`；集中修复已通过 PR #5 合入，生产已通过 Host Updater 升级到 `v1.7.3.6`，backend、web、yingce-agent 的实际 revision 均为 `11b4f379d0bd4fac8d031c6cbb0bcf5a34b6a0c8`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。结算后的余额动态刷新已通过真实 Standard 任务；新版原小球视频、历史结算及余额只读复验通过。正式产品镜像的隔离迁移失败、启动失败及 readiness 异常回退已通过。活动 Agent 验收发现最终会话保存缺口，修复后的本地二进制已通过隔离回退测试，尚未发布到生产；复杂 Agent 排空及平台真实退款等边界仍待验收。
 
 ## RunningHub 配置
 
@@ -226,7 +226,19 @@ Windows 后端最终回归其余 37 包无失败、App 四分片共 1388 项通�
 
 这套测试仅在同一固定版本内注入故障，使用缓存镜像及本地 Compose 替代远端下载；不是跨版本升级或生产故障实测。readiness 场景未等待完整 10 分钟重试循环；空闲停服也不能证明活动 Agent 会话已安全排空。运行需明确设置 `CANVAS_HOSTUPDATE_PRODUCT_TEST=1`、`CANVAS_HOSTUPDATE_PRODUCT_COMPOSE`、`CANVAS_HOSTUPDATE_PRODUCT_VERSION`、`CANVAS_HOSTUPDATE_PRODUCT_REPOSITORY`，再执行 `go test ./internal/hostupdate -run '^TestProductContainerRollback$' -count=1 -v -timeout=12m`。默认跳过仅表示未启用产品镜像测试，不能记作通过。
 
-当前剩余边界为真实平台取消/失败退款、活动 Agent 排空、跨版本失败迁移及完整健康超时循环。隔离测试和旧账单只读复核均不能替代这些生产证据；不对生产注入故障，也不为验收追加收费生成。
+### 活动 Agent 最终回答排空与回退
+
+新增 opt-in `TestProductActiveAgentRollback`：正式六服务 Compose 额外运行仅在内部网络可达的模拟模型上游，使用独立空库、测试身份、真实后台 API、远程 Agent、模型任务 Worker 与账务。确认 Agent `active=1` 后保持模型响应挂起；等 Backend 主 HTTP 关闭，再释放响应，随后执行实际最终备份、迁移校验失败及回退。没有使用生产凭证、素材、配置或资金，没有访问 RunningHub。
+
+未修复的 `v1.7.3.6` 复现最终会话 JSONL 缺少回答，尽管模型任务已经成功结算且有优雅停服日志。原因是原 `StopWorker` 仅等待平台 Worker，未等待独立 Agent 收尾，随后 `Close` 取消了仍在提交会话快照的 Agent；恢复时，旧步骤还可能被已用尽的步骤预算拦截。
+
+修复在 drain 时关闭新 Agent 会话准入，平台 Worker 停止后继续在同一退出期限内等待 Agent 保存检查点；超时仍返回错误，由关闭路径取消并等待剩余会话。模型恢复先接管已创建的步骤任务，再检查新步骤预算，避免为接管重复建单或扣费。未修改数据库结构或 API 合同。
+
+本地 Agent、Worker、恢复与排空专项通过（21.115 秒），Host Updater 与 server 整包通过（4.746 / 6.482 秒），三包 `go vet` 通过。服务器在缓存的正式 `v1.7.3.6` 镜像环境中只读挂载本地交叉编译 Backend 复验，通过耗时 84.59 秒、退出码 0。最终备份前严格得到 `completed:1:999900:0:1`（会话完成、一个成功模型任务、测试余额 999900、冻结 0、一份含最终回答的快照）；回退后仍只调用一次模型、结算一次 100 microcredits。测试容器、卷与网络均清理。
+
+这次使用 PostgreSQL 路径的 `CGO_ENABLED=0` 本地补丁二进制覆盖隔离 Backend，不是新正式镜像发布或生产复验。补丁 SHA-256 为 `8e52cf2df23bce09ef4af9322f43e516c00943cb5a1ab852b72ce205e04f3da0`，测试程序为 `23317a0143fe7bab3dddfab2596ffc89cc75d81f0339d5e87ac7f811b02b9586`；截图为本地忽略目录 `product-agent-rollback-pass.jpg`。生产仍运行未包含这次修复的 `v1.7.3.6`。
+
+当前剩余边界为修复正式发布与生产复验、真实平台取消/失败退款、Agent 多步工具及超时/强制中止恢复、跨版本失败迁移、完整健康超时循环。单次最终回答排空和隔离测试不能替代这些证据；不对生产注入故障，也不为验收追加收费生成。
 
 ## 真实环境配置顺序
 
