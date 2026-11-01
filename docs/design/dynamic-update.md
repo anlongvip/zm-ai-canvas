@@ -68,6 +68,8 @@ Backend drain 同时关闭新 Agent 会话准入。模型任务完成并不代�
 
 `TestProductActiveAgentRollback` 可在上述独立产品镜像测试环境中验证该边界：挂起模拟模型响应，在 Backend 主 HTTP 停止后释放，要求最终备份前任务结算和含回答的会话快照已提交，再触发真实迁移失败并回退。可选 `CANVAS_HOSTUPDATE_PRODUCT_BACKEND_BINARY` 只读挂载绝对路径的普通本地二进制到隔离 Backend，测试日志记录其 SHA-256；该模式仅用于发布前验证，不能记作正式镜像或生产已修复。当前只覆盖单次最终回答，多步工具及超时/强制中止仍需独立验收。
 
+该修复已随 `v1.7.3.7` 正式发布并部署。关闭本地二进制覆盖、使用正式三镜像的隔离验收通过（82.81 秒、退出码 0），证明备份前最终回答与单次结算已提交，回退后快照保留且没有再次调用模型。生产升级、最终备份完整性和历史视频只读复验通过；具体 Release、操作和证据见 `docs/plans/runninghub-video-phase1.md`，不将隔离故障注入表述为生产故障测试。
+
 ### 迁移与切换
 
 目标镜像以一次性容器执行 `migrate-schema up`。迁移整批运行在事务中，PostgreSQL 使用事务级 advisory lock；迁移实现与 `schema_migrations` 记录的名称或 checksum 不一致时立即失败。迁移成功后才切换 Web/Backend 镜像，并保持旧镜像 digest 与旧 Compose 配置可用。
