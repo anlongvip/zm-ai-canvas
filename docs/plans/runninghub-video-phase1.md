@@ -4,7 +4,7 @@
 
 将 RunningHub 工作流 `2112923637551575042` 接入影策系统视频模型，使视频工作台、画布和自动做剧可以统一选择并调用该模型。
 
-开发基线：`codex/runninghub-phase1-complete`；集中修复已通过 PR #5 合入，生产已通过 Host Updater 升级到 `v1.7.3.6`，backend、web、yingce-agent 的实际 revision 均为 `11b4f379d0bd4fac8d031c6cbb0bcf5a34b6a0c8`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。结算后的余额动态刷新已通过真实 Standard 任务；新版原小球视频、历史结算及余额只读复验通过。平台取消或失败终态退款，以及真实产品迁移失败和 Agent 排空故障仍待验收，不能用隔离测试代替生产证据。
+开发基线：`codex/runninghub-phase1-complete`；集中修复已通过 PR #5 合入，生产已通过 Host Updater 升级到 `v1.7.3.6`，backend、web、yingce-agent 的实际 revision 均为 `11b4f379d0bd4fac8d031c6cbb0bcf5a34b6a0c8`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。结算后的余额动态刷新已通过真实 Standard 任务；新版原小球视频、历史结算及余额只读复验通过。已补充正式产品镜像在隔离环境中的迁移失败、启动失败及 readiness 异常回退验收；平台取消或失败终态退款，以及活动 Agent 排空仍待验收，不能用隔离测试代替生产证据。
 
 ## RunningHub 配置
 
@@ -216,7 +216,17 @@ Windows 后端最终回归其余 37 包无失败、App 四分片共 1388 项通�
 
 升级后刷新后台显示当前版本和最新发布均为 `v1.7.3.6`、更新成功；readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。创作历史保留原小球任务与三参考任务，分别显示 0.2375、1.0175 积分、已结算，余额 104.18、运行中 0。原小球结果保留运行时间 95 秒、`consumeMoney=0.019`，视频解码 1280×736、5.166667 秒，播放至结尾，`ended=true`、`readyState=4`、`error=null`。本次复验没有新增收费任务或修改账务。升级与播放证据分别为本地忽略目录中的 `production-v1.7.3.6.jpg`、`production-v1.7.3.6-video.jpg`。
 
-当前剩余边界为真实平台取消/失败退款、真实产品迁移失败、Agent 排空及业务健康故障。隔离测试和旧账单只读复核均不能替代这些生产证据；不对生产注入故障，也不为验收追加收费生成。
+### 正式产品镜像隔离回退验收
+
+新增 opt-in `backend/internal/hostupdate/manager_product_integration_test.go`，直接运行已发布 `v1.7.3.6` 的 Backend、Web、Agent 与正式六服务 Compose。使用新建的独立项目、内部网络、空 PostgreSQL 17/Redis 及数据卷，不读取生产 `.env`、密钥或业务数据；每服务限制 512 MB，Web 也不发布宿主机端口。健康检查由 Agent 容器中的 Node 访问真实 Web HTTP 接口，保留实际响应状态和正文。
+
+三个场景均调用实际更新器恢复实现：停服与最终 ZIP 备份后破坏迁移校验和，让真实 `migrate-schema up` 失败；将目标 Backend 的数据库驱动改成非法值，让真实启动失败；删除隔离数据库最新 schema 记录，让真实 readiness 返回 HTTP 503，再调用健康超时后的同一回退入口。恢复后逐一核对 SQL 原始标记、数据文件、配置密钥 SHA-256 和实际版本健康，并核对旧 Backend 优雅停服日志。三场景首轮完整通过耗时 261.11 秒、退出码 0；测试容器、卷和网络均清理，生产五服务保持 healthy，没有新增收费生成。
+
+随后补充具体故障原因断言：迁移必须报告 schema 校验和不一致，目标后端必须报告非法数据库驱动，避免将其他进程错误当成故障覆盖。最终程序 SHA-256 为 `bb51eef6f17cc124301c997b48163095456303ae84d8d0748ffbbc7a31101692`；三场景再次全部通过，总耗时 273.97 秒，分别为 80.45 / 89.74 / 103.77 秒、退出码 0。容器、卷及网络再次清理，生产五服务 healthy、Host Updater active；截图保存在本地忽略目录 `product-rollback-pass.jpg`。Windows 更新器整包测试与 `go vet` 通过；产品镜像 opt-in 在 Windows 默认跳过，实际运行依据为该 Linux 结果。
+
+这套测试仅在同一固定版本内注入故障，使用缓存镜像及本地 Compose 替代远端下载；不是跨版本升级或生产故障实测。readiness 场景未等待完整 10 分钟重试循环；空闲停服也不能证明活动 Agent 会话已安全排空。运行需明确设置 `CANVAS_HOSTUPDATE_PRODUCT_TEST=1`、`CANVAS_HOSTUPDATE_PRODUCT_COMPOSE`、`CANVAS_HOSTUPDATE_PRODUCT_VERSION`、`CANVAS_HOSTUPDATE_PRODUCT_REPOSITORY`，再执行 `go test ./internal/hostupdate -run '^TestProductContainerRollback$' -count=1 -v -timeout=12m`。默认跳过仅表示未启用产品镜像测试，不能记作通过。
+
+当前剩余边界为真实平台取消/失败退款、活动 Agent 排空、跨版本失败迁移及完整健康超时循环。隔离测试和旧账单只读复核均不能替代这些生产证据；不对生产注入故障，也不为验收追加收费生成。
 
 ## 真实环境配置顺序
 
