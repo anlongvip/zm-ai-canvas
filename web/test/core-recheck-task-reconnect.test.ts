@@ -195,3 +195,74 @@ test("last subscriber aborts observation and reopening resumes the same task", a
     reopened();
     expect(signals[1].aborted).toBe(true);
 });
+
+for (const status of ["succeeded", "failed", "cancelled"] as const) {
+    test(`reopening a ${status} task refreshes the wallet once without polling or resubmitting`, async () => {
+        let walletUpdates = 0;
+        let queries = 0;
+        const snapshots: GenerationTask[] = [];
+        const onWalletUpdate = () => {
+            walletUpdates += 1;
+        };
+        window.addEventListener("wallet:updated", onWalletUpdate);
+        const service = createGenerationTaskSubscriptionService({
+            async queryTask(id) {
+                expect(id).toBe(running.id);
+                queries += 1;
+                return {
+                    ...running,
+                    status,
+                    billing: { status: status === "succeeded" ? "settled" : "refunded", amountMicrocredits: 12500, actualAmountMicrocredits: status === "succeeded" ? 330000 : 0, refundedAmountMicrocredits: status === "succeeded" ? 0 : 12500 },
+                };
+            },
+            async waitTask() {
+                throw new Error("terminal task must not be polled");
+            },
+        });
+        const unsubscribe = service.subscribe([running.id], (task) => snapshots.push(task));
+        let unsubscribeAgain = () => {};
+        try {
+            await tick();
+            expect(snapshots.at(-1)?.status).toBe(status);
+            expect(walletUpdates).toBe(1);
+            unsubscribeAgain = service.subscribe([running.id], () => {});
+            await tick();
+            expect(queries).toBe(1);
+            expect(walletUpdates).toBe(1);
+        } finally {
+            unsubscribe();
+            unsubscribeAgain();
+            window.removeEventListener("wallet:updated", onWalletUpdate);
+        }
+    });
+}
+
+test("an old account's terminal query cannot refresh the new account's wallet", async () => {
+    let resolveQuery!: (task: GenerationTask) => void;
+    let walletUpdates = 0;
+    const snapshots: GenerationTask[] = [];
+    const onWalletUpdate = () => {
+        walletUpdates += 1;
+    };
+    window.addEventListener("wallet:updated", onWalletUpdate);
+    const service = createGenerationTaskSubscriptionService({
+        queryTask: () =>
+            new Promise<GenerationTask>((resolve) => {
+                resolveQuery = resolve;
+            }),
+        async waitTask() {
+            throw new Error("terminal task must not be polled");
+        },
+    });
+    const unsubscribe = service.subscribe([running.id], (task) => snapshots.push(task));
+    try {
+        window.localStorage.getItem = () => "another-account";
+        resolveQuery(terminal);
+        await tick();
+        expect(snapshots).toEqual([]);
+        expect(walletUpdates).toBe(0);
+    } finally {
+        unsubscribe();
+        window.removeEventListener("wallet:updated", onWalletUpdate);
+    }
+});

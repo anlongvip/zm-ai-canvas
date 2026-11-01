@@ -242,9 +242,13 @@ export function createGenerationTaskSubscriptionService(dependencies: Generation
         entry.controller = controller;
         entry.observation = (async () => {
             const initial = await dependencies.queryTask(id, { signal: controller.signal });
-            if (controller.signal.aborted) return;
+            if (controller.signal.aborted || entry.scope !== getActiveUserScope()) return;
             publish(entry, initial);
-            if (initial.status === "succeeded" || initial.status === "failed" || initial.status === "cancelled") return;
+            if (initial.status === "succeeded" || initial.status === "failed" || initial.status === "cancelled") {
+                // 恢复页面时可能直接读到终态，不会进入 waitTask 的余额刷新分支。
+                if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("wallet:updated"));
+                return;
+            }
             const terminal = await dependencies.waitTask(id, {
                 initialTask: initial,
                 signal: controller.signal,
