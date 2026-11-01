@@ -17,7 +17,7 @@ import { modelCapabilityConfigFor, normalizeImageValue, normalizeVideoValue } fr
 import { creationVideoConfig } from "@/pages/create/creation-generation-config";
 import { imageQualityLabel } from "@/lib/image-quality";
 import { modelQuoteRequest } from "@/lib/model-pricing";
-import { taskBillingDisplayAmount } from "@/lib/generation-task-display";
+import { canCancelGenerationTask, taskBillingDisplayAmount } from "@/lib/generation-task-display";
 import { quoteModel } from "@/services/api/logical-models";
 import { prepareBackendGenerationTask } from "@/services/api/generation-task";
 import { createGenerationTask, cancelGenerationTask, queryGenerationTask, retryGenerationTask, type GenerationTask } from "@/services/api/task-center";
@@ -1419,7 +1419,7 @@ export function WorkbenchPage({ kind }: { kind: WorkbenchKind }) {
                             </div>
                             <div className="workbench-task-list">
                                 {activeTasks.length ? (
-                                    activeTasks.map((task) => <TaskRow key={task.id} task={task} kind={kind} modelLabel={taskModelLabel(task)} busy={taskBusyId === task.id} onOpen={() => void openDetail(task)} onCancel={() => void cancelTask(task)} />)
+                                    activeTasks.map((task) => <TaskRow key={task.id} task={task} kind={kind} modelLabel={taskModelLabel(task)} busy={taskBusyId === task.id} onOpen={() => void openDetail(task)} onCancel={canCancelGenerationTask(task) ? () => void cancelTask(task) : undefined} />)
                                 ) : (
                                     <p className="workbench-list-empty">暂无进行中的任务</p>
                                 )}

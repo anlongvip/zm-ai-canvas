@@ -8,6 +8,7 @@ REQUIRED = {
     ("canvas", "TestRepairAssetBytesPostgres"),
     ("repository", "TestCanvasRevision/postgres"),
     ("repository", "TestRestoreRefundedVideoRuntimeConcurrentPostgres"),
+    ("repository", "TestUserOSSSettingConcurrentVersionsPostgres"),
     ("platform", "TestRuntimeCoordinatorRedisLeasePreservesLongestTTL"),
     ("app", "TestClearAdminRuntimeCacheUsesRedisWhitelist"),
 }

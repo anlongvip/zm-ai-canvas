@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -247,12 +246,7 @@ func isTransientTransportError(err error) bool {
 	if !errors.As(err, &urlError) && !errors.As(err, &opError) {
 		return false
 	}
-	for _, target := range []error{io.EOF, syscall.ECONNRESET, syscall.ECONNABORTED, syscall.EPIPE} {
-		if errors.Is(err, target) {
-			return true
-		}
-	}
-	return false
+	return errors.Is(err, io.EOF) || isTransportDisconnect(err)
 }
 
 func isTransientResponseDecodeError(err error) bool {
