@@ -172,6 +172,22 @@ Ultra 与多参考组合已通过真实上游验证；生产 Ultra 工作台、S
 
 OSS 用户已确认保存的规则：来源 `https://ai.zhimomedia.com`，方法 GET、HEAD，请求头 Range，暴露头 ETag、Content-Length、Content-Range、Accept-Ranges，缓存 600 秒，返回 Vary: Origin。用户截图已核对填写内容，生效由原画布视频实际恢复和播放证明；未通过工具读取被拒的控制台。
 
+### 请求详情补丁发布
+
+RunningHub v2 顶层 `taskId` 现已纳入请求日志解析；日志自身没有上游编号时，从同用户关联任务记录回退读取，不改写历史账务。修复提交 `3bb2d85e`，PR #4 质量检查通过；版本元数据提交 `54fc6724` 的质量检查 run `41277657412` 也全部通过，合并后的主线提交为 `1bb9c3ec5ec84b657f63ed78157c7fc0e2a170db`。
+
+主线镜像发布 run `41278034623` 完整成功后，正式 tag `v1.7.3.4` 固定到上述主线提交。tag 发布 run `41278562621` 成功，复用同 SHA 已通过的主线质量检查；三个镜像的固定版本标签均为 `1.7.3.4`。只读获取 GHCR index、Linux amd64 manifest 与 config，验证内容 SHA-256 和镜像 revision/version，结果如下：
+
+| 镜像 | 固定版本 index digest |
+| --- | --- |
+| `ghcr.io/anlongvip/open-ai-canvas-backend:1.7.3.4` | `sha256:872d253fb78fcb5fa5587c0da2ce603aeca3e4dacf77f41302b344f49ab6cda6` |
+| `ghcr.io/anlongvip/open-ai-canvas-web:1.7.3.4` | `sha256:1d5f36dabd0576860c2c549a7a2f08c7bfaae12cfd997ff49c4e4e54eb744f81` |
+| `ghcr.io/anlongvip/open-ai-canvas-yingce-agent:1.7.3.4` | `sha256:e33cb4b654bcc830491ce441a6bef503052d7b5f47a82e3090a8f8494bc957e8` |
+
+Release 的四项资产均已下载并匹配 GitHub 公布的文件摘要；两个更新器二进制同时匹配 `SHA256SUMS`，Compose 文件与 tag 中的源文件完全相同。此处只完成发布资产核对，没有执行更新器或更改生产服务器。
+
+生产公开 `/api/health/ready` 的本次只读结果为 `ready=true`、schema `77/77`、活动 worker 任务数 `0`，后端仍为 `97888ff4 / v1.7.3.3`。电脑控制无法可靠识别 Chrome 当前网址并停止，尚不能通过现有浏览器会话完成部署和登录态复验；没有读取浏览器凭据或新建收费任务。部署后应优先复验已有平台任务 `c880006c9d3e4ea38040735a1dcb434f` 是否展示上游编号 `2116721575328051201`；余额实时刷新和平台确认取消后的自动退款仍待真实事件证据。
+
 ## 真实环境配置顺序
 
 1. 复用已配置的系统渠道，协议选择 `runninghub-workflow-video`，Base URL 为 `https://www.runninghub.ai`，API Key 使用已验证可提交和上传的企业 Key；不更换现有有效 Key。
