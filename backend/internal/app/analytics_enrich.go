@@ -141,7 +141,7 @@ func (s *Service) enrichAPICallLogPayload(log *model.ApiCallLog, payload map[str
 		}
 		log.CachedTokens = firstInt64(usageMetadata, "cachedContentTokenCount")
 	}
-	if extracted, err := firstJSONString(payload, "task_id", "id", "request_id", "name"); err == nil {
+	if extracted, err := firstJSONString(payload, "task_id", "taskId", "id", "request_id", "name"); err == nil {
 		log.ProviderRequestID = firstNonEmpty(nestedTaskID, extracted, log.ProviderRequestID)
 	} else {
 		log.ProviderRequestID = firstNonEmpty(nestedTaskID, log.ProviderRequestID)
