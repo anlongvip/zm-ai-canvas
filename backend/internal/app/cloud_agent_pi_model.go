@@ -241,6 +241,11 @@ func (s *Service) runCloudAgentModelStep(ctx context.Context, userID, runID stri
 		if released {
 			continue
 		}
+		// Existing steps may settle during shutdown, but the stopped dispatcher
+		// cannot execute another step. Leave this run recoverable after restart.
+		if s.IsDraining() {
+			return nil, false, errTaskAdmissionDraining
+		}
 		// 接管已占用预算的旧步骤不产生新任务或订单，不能被新步骤的上限拦截。
 		if cloudAgentStepBudgetExhausted(&state) {
 			s.settleCloudAgentPiFinalAnswer(userID, runID)

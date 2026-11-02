@@ -33,7 +33,18 @@ func TestProductContainerRollback(t *testing.T) {
 	if repository == "" {
 		t.Fatal("CANVAS_HOSTUPDATE_PRODUCT_REPOSITORY is required")
 	}
-	for _, fault := range []string{"migration", "startup-health", "readiness"} {
+	targetVersion := version
+	faults := []string{"migration", "startup-health", "readiness"}
+	if target := os.Getenv("CANVAS_HOSTUPDATE_PRODUCT_TARGET_VERSION"); target != "" {
+		if !IsReleaseVersion(target) || CompareVersions(target, version) <= 0 {
+			t.Fatal("cross-version target must be a newer fixed release")
+		}
+		targetVersion = target
+		// This opt-in mode exercises a different published migrator and then
+		// restores the source release. Other faults remain same-version cases.
+		faults = []string{"migration"}
+	}
+	for _, fault := range faults {
 		t.Run(fault, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "canvas-product-"+randomID())
 			manager, body := productContainerFixture(t, dir, composeSource, repository, version)
@@ -88,7 +99,7 @@ func TestProductContainerRollback(t *testing.T) {
 					body = string(encoded)
 				}
 				manager.httpClient.Transport = productHealthTransport{manager: manager, version: version, compose: body}
-				manager.runUpdate(version, version)
+				manager.runUpdate(version, targetVersion)
 				if !runner.injected || !runner.observedFailure {
 					t.Fatalf("real product failure not exercised: injected=%v failed=%v detail=%s", runner.injected, runner.observedFailure, runner.failureDetail)
 				}
@@ -113,7 +124,7 @@ func TestProductContainerRollback(t *testing.T) {
 			if !graceful {
 				t.Fatal("real backend did not report graceful shutdown")
 			}
-			t.Logf("published product fault=%s phase=%s project=%s; database, data, key and real readiness restored", fault, manager.state.Operation.Phase, composeProjectName(dir))
+			t.Logf("published product %s -> %s fault=%s phase=%s project=%s; database, data, key and real readiness restored", version, targetVersion, fault, manager.state.Operation.Phase, composeProjectName(dir))
 		})
 	}
 }

@@ -164,6 +164,12 @@ async function run() {
             thinkingLevel: options?.reasoning ?? "off",
             contextUsage: session.getContextUsage(),
           }, options?.signal);
+          if (result.pause) {
+            pausedForMaintenance = true;
+            stream.push({ type: "error", reason: "aborted", error: { ...partial, stopReason: "aborted", errorMessage: "paused for maintenance" } });
+            stream.end();
+            return;
+          }
           for (const text of result.steeringMessages ?? []) {
             await session.steer(text);
           }
@@ -203,6 +209,7 @@ async function run() {
   let session;
   // 工具进入审批时主动中止本轮；这是暂停，不是失败。
   let pausedForApproval = false;
+  let pausedForMaintenance = false;
   const executedToolCalls = new Set();
   const tools = (request.tools ?? []).map((tool) => ({
     name: tool.name,
@@ -501,10 +508,10 @@ async function run() {
     try {
       await session.prompt(request.prompt);
     } catch (error) {
-      if (!pausedForApproval) throw error;
+      if (!pausedForApproval && !pausedForMaintenance) throw error;
     }
     await eventChain.current;
-    if (runtimeError && !pausedForApproval) throw runtimeError;
+    if (runtimeError && !pausedForApproval && !pausedForMaintenance) throw runtimeError;
     const sessionFile = sessionManager.getSessionFile();
     const sessionJSONL = await readFile(sessionFile, "utf8");
     await bridge(request, "/event", {

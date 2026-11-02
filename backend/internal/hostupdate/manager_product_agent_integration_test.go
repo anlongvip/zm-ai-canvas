@@ -16,6 +16,23 @@ import (
 // Exercise the published remote Agent, real model-task worker, shutdown and
 // backup/rollback together. Only the model upstream and fixture identity are fake.
 func TestProductActiveAgentRollback(t *testing.T) {
+	testProductAgentRollback(t, false, "")
+}
+
+func TestProductAgentToolRoundRollback(t *testing.T) {
+	testProductAgentRollback(t, true, "")
+}
+
+func TestProductAgentForcedStopRecovery(t *testing.T) {
+	testProductAgentRollback(t, false, "kill")
+}
+
+func TestProductAgentDrainTimeoutRecovery(t *testing.T) {
+	testProductAgentRollback(t, false, "timeout")
+}
+
+func testProductAgentRollback(t *testing.T, toolRound bool, interruption string) {
+	t.Helper()
 	if os.Getenv("CANVAS_HOSTUPDATE_PRODUCT_TEST") != "1" {
 		t.Skip("set CANVAS_HOSTUPDATE_PRODUCT_TEST=1 with cached release images")
 	}
@@ -46,11 +63,29 @@ func TestProductActiveAgentRollback(t *testing.T) {
 		mounts, _ := backend["volumes"].([]any)
 		backend["volumes"] = append(mounts, map[string]any{"type": "bind", "source": binary, "target": "/usr/local/bin/yingce-backend", "read_only": true})
 	}
+	if script := os.Getenv("CANVAS_HOSTUPDATE_PRODUCT_AGENT_SCRIPT"); script != "" {
+		info, err := os.Lstat(script)
+		if err != nil || !filepath.IsAbs(script) || !info.Mode().IsRegular() {
+			t.Fatalf("Agent override must be an absolute regular file: %s (%v)", script, err)
+		}
+		body, err := os.ReadFile(script)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("isolated Agent script override SHA-256=%x; dependencies remain from the release image", sha256.Sum256(body))
+		agent := services["yingce-agent"].(map[string]any)
+		mounts, _ := agent["volumes"].([]any)
+		agent["volumes"] = append(mounts, map[string]any{"type": "bind", "source": script, "target": "/app/agent-runtime/agent-runtime.mjs", "read_only": true})
+	}
 	services["backend"].(map[string]any)["environment"].(map[string]any)["CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS"] = "model-fixture"
+	if interruption == "timeout" {
+		services["backend"].(map[string]any)["environment"].(map[string]any)["CANVAS_SHUTDOWN_TIMEOUT"] = "1s"
+	}
 	services["model-fixture"] = map[string]any{
 		"image":      immutableImageRefs(repository, version).agent,
 		"entrypoint": []string{"node"}, "command": []string{"-e", productAgentUpstream},
 		"restart": "no", "mem_limit": "128m",
+		"environment": map[string]any{"TOOL_ROUND": fmt.Sprint(toolRound)},
 		"healthcheck": map[string]any{
 			"test":     []string{"CMD", "node", "-e", "fetch('http://127.0.0.1:18080/status').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"},
 			"interval": "1s", "timeout": "3s", "retries": 30, "start_period": "1s",
@@ -106,9 +141,13 @@ CREATE TABLE updater_evidence (marker text PRIMARY KEY); INSERT INTO updater_evi
 		}},
 		"priceTiers": []any{map[string]any{"billingMode": "fixed_request", "unitPriceMicrocredits": 100, "priceConfigured": true, "enabled": true}},
 	})
+	prompt, steps, finalBalance := "Return a brief final answer without using tools.", 1, "999900"
+	if toolRound {
+		prompt, steps, finalBalance = "Read the canvas state once, then return a brief final answer.", 2, "999800"
+	}
 	runData := productAgentAPI(t, m, version, "POST", "/api/agent/runs", map[string]any{
-		"canvasId": "agent-canvas", "prompt": "Return a brief final answer without using tools.", "model": "text-fixture", "channelId": channel.Channel.ID, "channelModelKey": "text-fixture",
-		"permissionMode": "read_only", "contextScope": []string{"canvas"}, "budget": map[string]any{"maxCredits": 1, "maxSteps": 1}, "idempotencyKey": "fixture-active-drain",
+		"canvasId": "agent-canvas", "prompt": prompt, "model": "text-fixture", "channelId": channel.Channel.ID, "channelModelKey": "text-fixture",
+		"permissionMode": "read_only", "contextScope": []string{"canvas"}, "budget": map[string]any{"maxCredits": 1, "maxSteps": steps}, "idempotencyKey": "fixture-active-drain",
 	})
 	var run struct {
 		Run struct {
@@ -135,43 +174,74 @@ CREATE TABLE updater_evidence (marker text PRIMARY KEY); INSERT INTO updater_evi
 	}
 	t.Log("published remote Agent active=1; actual model request held before update")
 	var stoppedState string
-	runner := &productContainerRunner{execRunner: execRunner{dir: dir}, manager: m, version: version, fault: "migration"}
-	runner.afterStop = func() error {
-		var output bytes.Buffer
-		sql := "SELECT e.status || ':' || (SELECT count(*) FROM tasks WHERE user_id='agent-fixture' AND operation='cloud_agent_step' AND status='succeeded') || ':' || a.available_microcredits || ':' || a.reserved_microcredits || ':' || (SELECT count(*) FROM cloud_agent_pi_sessions WHERE user_id='agent-fixture' AND session_jsonl LIKE '%fixture final answer%') FROM cloud_agent_executions e JOIN credit_accounts a ON a.user_id=e.user_id WHERE e.user_id='agent-fixture'"
-		if err := m.compose(m.composePath(), version, time.Minute, &output, "exec", "-T", "postgres", "psql", "-U", "canvas", "-d", "canvas", "-Atc", sql); err != nil {
-			return err
+	if interruption != "" {
+		if interruption == "kill" {
+			productCompose(t, m, version, "kill", "-s", "SIGKILL", "backend")
+		} else {
+			productCompose(t, m, version, "stop", "backend")
+			logs := productCompose(t, m, version, "logs", "--no-color", "backend")
+			if !strings.Contains(logs, "context deadline exceeded") || strings.Contains(logs, "backend stopped gracefully") {
+				t.Fatalf("fixture did not exhaust its actual shutdown deadline: %s", logs)
+			}
 		}
-		stoppedState = strings.TrimSpace(output.String())
-		if stoppedState != "completed:1:999900:0:1" {
-			return fmt.Errorf("Agent result, settlement or final session not committed before final backup: %s", stoppedState)
+		stoppedState = strings.TrimSpace(productSQL(t, m, version, "SELECT e.status || ':' || a.available_microcredits || ':' || a.reserved_microcredits FROM cloud_agent_executions e JOIN credit_accounts a ON a.user_id=e.user_id WHERE e.user_id='agent-fixture'"))
+		if stoppedState != "running:999900:100" {
+			t.Fatalf("interruption lost the recoverable run/reservation: %s", stoppedState)
 		}
-		return nil
-	}
-	m.runner = runner
-	// Release the in-flight response only after the backend listener closes.
-	// The fixture upstream stays alive while the updater stops business services.
-	released := make(chan error, 1)
-	go func() {
-		var output bytes.Buffer
-		script := `const until=Date.now()+60000;(async()=>{while(Date.now()<until){let open=true;try{await fetch('http://backend:8080/api/health/ready',{signal:AbortSignal.timeout(1000)})}catch{open=false}if(!open){const h=await fetch('http://127.0.0.1:8081/healthz').then(r=>r.json());if(h.active!==1)throw Error('Agent stopped before active task drain');await fetch('http://model-fixture:18080/release');console.log('released during backend drain; Agent active=1');return}await new Promise(r=>setTimeout(r,100))}throw Error('backend did not begin shutdown')})().catch(e=>{console.error(e.message);process.exit(1)})`
-		err := m.compose(m.composePath(), version, 70*time.Second, &output, "exec", "-T", "yingce-agent", "node", "-e", script)
-		if err == nil && !strings.Contains(output.String(), "released during backend drain") {
-			err = fmt.Errorf("release evidence missing: %s", output.String())
+		productCompose(t, m, version, "exec", "-T", "yingce-agent", "node", "-e", `fetch('http://model-fixture:18080/release').then(r=>r.text()).then(console.log)`)
+		productCompose(t, m, version, "stop", "yingce-agent")
+		productCompose(t, m, version, "up", "-d", "--pull", "never", "--wait", "--wait-timeout", "120", "backend", "yingce-agent")
+	} else {
+		runner := &productContainerRunner{execRunner: execRunner{dir: dir}, manager: m, version: version, fault: "migration"}
+		runner.afterStop = func() error {
+			var output bytes.Buffer
+			snapshot := "%fixture final answer%"
+			if toolRound {
+				snapshot = `%"role":"toolResult"%`
+			}
+			sql := "SELECT e.status || ':' || (SELECT count(*) FROM tasks WHERE user_id='agent-fixture' AND operation='cloud_agent_step' AND status='succeeded') || ':' || a.available_microcredits || ':' || a.reserved_microcredits || ':' || (SELECT count(*) FROM cloud_agent_pi_sessions WHERE user_id='agent-fixture' AND session_jsonl LIKE '" + snapshot + "') FROM cloud_agent_executions e JOIN credit_accounts a ON a.user_id=e.user_id WHERE e.user_id='agent-fixture'"
+			if err := m.compose(m.composePath(), version, time.Minute, &output, "exec", "-T", "postgres", "psql", "-U", "canvas", "-d", "canvas", "-Atc", sql); err != nil {
+				return err
+			}
+			stoppedState = strings.TrimSpace(output.String())
+			want := "completed:1:999900:0:1"
+			if toolRound {
+				want = "running:1:999900:0:1"
+			}
+			if stoppedState != want {
+				return fmt.Errorf("Agent result, settlement or final session not committed before final backup: %s", stoppedState)
+			}
+			return nil
 		}
-		released <- err
-	}()
-	m.runUpdate(version, version)
-	if err := <-released; err != nil {
-		t.Fatal(err)
+		m.runner = runner
+		// Release the in-flight response only after the backend listener closes.
+		// The fixture upstream stays alive while the updater stops business services.
+		released := make(chan error, 1)
+		go func() {
+			var output bytes.Buffer
+			script := `const until=Date.now()+60000;(async()=>{while(Date.now()<until){let open=true;try{await fetch('http://backend:8080/api/health/ready',{signal:AbortSignal.timeout(1000)})}catch{open=false}if(!open){const h=await fetch('http://127.0.0.1:8081/healthz').then(r=>r.json());if(h.active!==1)throw Error('Agent stopped before active task drain');await fetch('http://model-fixture:18080/release');console.log('released during backend drain; Agent active=1');return}await new Promise(r=>setTimeout(r,100))}throw Error('backend did not begin shutdown')})().catch(e=>{console.error(e.message);process.exit(1)})`
+			err := m.compose(m.composePath(), version, 70*time.Second, &output, "exec", "-T", "yingce-agent", "node", "-e", script)
+			if err == nil && !strings.Contains(output.String(), "released during backend drain") {
+				err = fmt.Errorf("release evidence missing: %s", output.String())
+			}
+			released <- err
+		}()
+		m.runUpdate(version, version)
+		if err := <-released; err != nil {
+			t.Fatal(err)
+		}
+		if m.state.Operation.Phase != PhaseRolledBack || !runner.graceful || !runner.observedFailure {
+			t.Fatalf("active-Agent rollback incomplete: phase=%s graceful=%v migrationFailure=%v error=%s", m.state.Operation.Phase, runner.graceful, runner.observedFailure, m.state.Operation.Error)
+		}
 	}
-	if m.state.Operation.Phase != PhaseRolledBack || !runner.graceful || !runner.observedFailure {
-		t.Fatalf("active-Agent rollback incomplete: phase=%s graceful=%v migrationFailure=%v error=%s", m.state.Operation.Phase, runner.graceful, runner.observedFailure, m.state.Operation.Error)
+	deadline = time.Now().Add(90 * time.Second)
+	wantStatus := "completed"
+	if interruption != "" {
+		wantStatus = "failed"
 	}
-	deadline = time.Now().Add(60 * time.Second)
 	for {
 		status := productSQL(t, m, version, "SELECT status FROM cloud_agent_executions WHERE user_id='agent-fixture'")
-		if status == "completed\n" {
+		if strings.TrimSpace(status) == wantStatus {
 			break
 		}
 		if strings.TrimSpace(status) == "failed" || time.Now().After(deadline) {
@@ -179,20 +249,56 @@ CREATE TABLE updater_evidence (marker text PRIMARY KEY); INSERT INTO updater_evi
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	if got := productSQL(t, m, version, "SELECT count(*) FROM tasks WHERE user_id='agent-fixture' AND operation='cloud_agent_step' AND status='succeeded'"); got != "1\n" {
+	if interruption != "" {
+		productAssertInterruptedAgentUncertain(t, m, version, stoppedState, interruption)
+		return
+	}
+	if got := productSQL(t, m, version, "SELECT count(*) FROM tasks WHERE user_id='agent-fixture' AND operation='cloud_agent_step' AND status='succeeded'"); got != fmt.Sprintf("%d\n", steps) {
 		t.Fatalf("model task duplicated or not committed: %q", got)
 	}
-	if got := productSQL(t, m, version, "SELECT available_microcredits || ':' || reserved_microcredits FROM credit_accounts WHERE user_id='agent-fixture'"); got != "999900:0\n" {
+	if got := productSQL(t, m, version, "SELECT available_microcredits || ':' || reserved_microcredits FROM credit_accounts WHERE user_id='agent-fixture'"); got != finalBalance+":0\n" {
 		t.Fatalf("active task settlement duplicated/lost: %q", got)
 	}
 	if got := productSQL(t, m, version, "SELECT count(*) FROM cloud_agent_pi_sessions WHERE user_id='agent-fixture' AND session_jsonl LIKE '%fixture final answer%'"); got != "1\n" {
 		t.Fatalf("Agent final session snapshot missing: %q", got)
 	}
 	calls := productCompose(t, m, version, "exec", "-T", "yingce-agent", "node", "-e", `fetch('http://model-fixture:18080/status').then(r=>r.text()).then(console.log)`)
-	if !strings.Contains(calls, `"calls":1`) || !strings.Contains(calls, `"released":true`) {
+	if !strings.Contains(calls, fmt.Sprintf(`"calls":%d`, steps)) || !strings.Contains(calls, `"released":true`) {
 		t.Fatalf("upstream called again after rollback: %s", calls)
 	}
-	t.Logf("stopped before final backup: %s; rollback: one model call, one 100-microcredit settlement, final session snapshot and completed run", stoppedState)
+	if toolRound && !strings.Contains(calls, `"toolResults":1`) {
+		t.Fatalf("recovery did not reuse exactly one successful tool result: %s", calls)
+	}
+	if got := productSQL(t, m, version, "SELECT count(*) || ':' || count(*) FILTER (WHERE status='settled') || ':' || sum(actual_amount_microcredits) FROM billing_orders WHERE user_id='agent-fixture'"); got != fmt.Sprintf("%d:%d:%d\n", steps, steps, steps*100) {
+		t.Fatalf("recovery duplicated or lost settlement: %s", got)
+	}
+	t.Logf("stopped state=%s interruption=%q; recovered: %d task(s)/settlement(s), final session and completed run; upstream=%s", stoppedState, interruption, steps, strings.TrimSpace(calls))
+}
+
+func productAssertInterruptedAgentUncertain(t *testing.T, m *Manager, version, stoppedState, interruption string) {
+	t.Helper()
+	// An interrupted text response has no queryable upstream task ID. Recovery
+	// must preserve the original reservation and stop, never submit it again.
+	if got := productSQL(t, m, version, "SELECT count(*) || ':' || count(*) FILTER (WHERE status='failed') FROM tasks WHERE user_id='agent-fixture' AND operation='cloud_agent_step'"); got != "1:1\n" {
+		t.Fatalf("interrupted model task duplicated or did not terminate: %s", got)
+	}
+	if got := productSQL(t, m, version, "SELECT available_microcredits || ':' || reserved_microcredits FROM credit_accounts WHERE user_id='agent-fixture'"); got != "999900:100\n" {
+		t.Fatalf("uncertain submission lost its reservation: %s", got)
+	}
+	if got := productSQL(t, m, version, "SELECT count(*) || ':' || count(*) FILTER (WHERE status='uncertain') || ':' || coalesce(sum(actual_amount_microcredits),0) FROM billing_orders WHERE user_id='agent-fixture'"); got != "1:1:0\n" {
+		t.Fatalf("interrupted billing was duplicated, settled or refunded: %s", got)
+	}
+	if got := productSQL(t, m, version, "SELECT count(*) || ':' || count(*) FILTER (WHERE dispatch_state='submission_unknown') FROM route_attempts WHERE task_id IN (SELECT id FROM tasks WHERE user_id='agent-fixture')"); got != "1:1\n" {
+		t.Fatalf("unknown submission evidence lost: %s", got)
+	}
+	if got := productSQL(t, m, version, "SELECT failure_message FROM cloud_agent_executions WHERE user_id='agent-fixture'"); !strings.Contains(got, "为避免重复扣费已停止自动重发") {
+		t.Fatalf("interruption did not report the unresolved submission: %s", got)
+	}
+	calls := productCompose(t, m, version, "exec", "-T", "yingce-agent", "node", "-e", `fetch('http://model-fixture:18080/status').then(r=>r.text()).then(console.log)`)
+	if !strings.Contains(calls, `"calls":1`) || !strings.Contains(calls, `"released":true`) {
+		t.Fatalf("interrupted upstream request was repeated: %s", calls)
+	}
+	t.Logf("stopped state=%s interruption=%q; recovered one failed task, one uncertain order, unchanged reservation, no resend; upstream=%s", stoppedState, interruption, strings.TrimSpace(calls))
 }
 
 func productAgentAPI(t *testing.T, m *Manager, version, method, path string, body any) json.RawMessage {
@@ -222,6 +328,6 @@ func productAgentAPI(t *testing.T, m *Manager, version, method, path string, bod
 }
 
 const productAgentUpstream = `
-const {createServer}=require('node:http');let calls=0,released=false;const waiting=[];
-const answer=(res,body)=>{if(body.stream){res.writeHead(200,{'content-type':'text/event-stream'});res.write('data: '+JSON.stringify({id:'fixture',choices:[{index:0,delta:{role:'assistant',content:'fixture final answer'},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({id:'fixture',choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:4,total_tokens:14}})+'\n\n');res.end('data: [DONE]\n\n')}else{res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({id:'fixture',choices:[{index:0,message:{role:'assistant',content:'fixture final answer'},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:4,total_tokens:14}}))}};
-createServer(async(req,res)=>{if(req.url==='/status'){res.end(JSON.stringify({calls,released}));return}if(req.url==='/release'){released=true;for(const [r,b] of waiting.splice(0))answer(r,b);res.end('released');return}if(req.method!=='POST'){res.writeHead(404);res.end();return}let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);calls++;if(released)answer(res,body);else waiting.push([res,body])}).listen(18080,'0.0.0.0');`
+const {createServer}=require('node:http');let calls=0,released=false,toolResults=0;const waiting=[];const toolRound=process.env.TOOL_ROUND==='true';
+const answer=(res,body,call)=>{const tool=toolRound&&call===1;const message=tool?{role:'assistant',content:'',tool_calls:[{index:0,id:'fixture-read',type:'function',function:{name:'canvas_get_state',arguments:'{}'}}]}:{role:'assistant',content:'fixture final answer'};const finish=tool?'tool_calls':'stop';if(body.stream){res.writeHead(200,{'content-type':'text/event-stream'});res.write('data: '+JSON.stringify({id:'fixture',choices:[{index:0,delta:message,finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({id:'fixture',choices:[{index:0,delta:{},finish_reason:finish}],usage:{prompt_tokens:10,completion_tokens:4,total_tokens:14}})+'\n\n');res.end('data: [DONE]\n\n')}else{res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({id:'fixture',choices:[{index:0,message,finish_reason:finish}],usage:{prompt_tokens:10,completion_tokens:4,total_tokens:14}}))}};
+createServer(async(req,res)=>{if(req.url==='/status'){res.end(JSON.stringify({calls,released,toolResults}));return}if(req.url==='/release'){released=true;for(const args of waiting.splice(0))answer(...args);res.end('released');return}if(req.method!=='POST'){res.writeHead(404);res.end();return}let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);calls++;if(toolRound&&calls>1){const results=(body.messages||[]).filter(m=>m.role==='tool'&&m.tool_call_id==='fixture-read');toolResults+=results.length;if(results.length!==1||!results[0].content||JSON.parse(results[0].content).error){res.writeHead(400);res.end('successful tool result missing');return}}if(released)answer(res,body,calls);else waiting.push([res,body,calls])}).listen(18080,'0.0.0.0');`

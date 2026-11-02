@@ -355,9 +355,15 @@ func (s *Service) runCloudAgentPiSession(ctx context.Context, userID, runID stri
 
 	// 7. 运行 Pi 会话
 	var pausedForApproval atomic.Bool
+	var pausedForDrain atomic.Bool
 	err = runCloudAgentPi(ctx, request, cloudAgentPiBridge{
 		Model: func(callCtx context.Context, payload map[string]json.RawMessage) (any, error) {
-			return s.cloudAgentPiModel(callCtx, userID, runID, payload)
+			result, err := s.cloudAgentPiModel(callCtx, userID, runID, payload)
+			if errors.Is(err, errTaskAdmissionDraining) {
+				pausedForDrain.Store(true)
+				return map[string]any{"pause": true}, nil
+			}
+			return result, err
 		},
 		Tool: func(callCtx context.Context, payload map[string]json.RawMessage) (any, error) {
 			result, err := s.cloudAgentPiTool(callCtx, userID, runID, payload)
@@ -385,7 +391,7 @@ func (s *Service) runCloudAgentPiSession(ctx context.Context, userID, runID stri
 
 	// The same durable check covers a clean runtime exit after an asynchronous
 	// abort, when the local atomic flag was not observed by this coordinator.
-	if pausedForApproval.Load() || s.cloudAgentRunPausedForInput(userID, runID) {
+	if pausedForDrain.Load() || pausedForApproval.Load() || s.cloudAgentRunPausedForInput(userID, runID) {
 		return nil
 	}
 
