@@ -4,7 +4,7 @@
 
 将 RunningHub 工作流 `2112923637551575042` 接入影策系统视频模型，使视频工作台、画布和自动做剧可以统一选择并调用该模型。
 
-开发基线：`codex/runninghub-phase1-complete`；集中修复及 Agent 收尾修复已通过 PR #5、#6 合入，生产已通过 Host Updater 升级到 `v1.7.3.7`，backend、web、yingce-agent 的实际 revision 均为 `fcfea88dc509b7ff14b744f4adae833734072567`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。结算后的余额动态刷新已通过真实 Standard 任务；新版原小球视频、历史结算及余额只读复验通过。正式产品镜像的隔离迁移失败、启动失败及 readiness 异常回退已通过。活动 Agent 最终会话保存缺口已修复，`v1.7.3.7` 正式镜像在无本地补丁覆盖的隔离回退验收中通过；复杂 Agent 排空及平台真实退款等边界仍待验收。
+开发基线：`codex/runninghub-phase1-complete`；集中修复、Agent 收尾及多步工具维护暂停已通过 PR #5、#6、#7 合入，生产已通过 Host Updater 升级到 `v1.7.3.8`，backend、web、yingce-agent 的实际 revision 均为 `f6c4f337b3b92212367889eec80cba743d105632`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；备份摘要与全项 CRC 已独立复核。结算后的余额动态刷新已通过真实 Standard 任务。正式产品镜像隔离回退、多步 Agent 维护恢复及提交不确定保护的证据与限制见下文；平台真实取消/失败退款仍待有账单关联的终态证据，不追加收费任务或修改生产账务。
 
 ## RunningHub 配置
 
@@ -272,7 +272,25 @@ PR #6 质量检查 run `41357467480`、主线镜像发布 run `41358058777`、�
 
 强杀与停服超时首轮使用正式 `v1.7.3.7`，两项均触发既有提交不确定保护：没有上游任务 ID 的文本请求不自动重发，run 报告“为避免重复扣费已停止自动重发”。原测试错误预期自动续跑，分别在 84.92 / 78.89 秒失败，不能计作通过；未因此放宽防重复提交。专项改为核对原任务失败、单笔订单待核对、原冻结积分保留、仅一次上游调用。1 秒停服期限已实际耗尽并报告 `context deadline exceeded`，没有伪报优雅退出。
 
-最终源码重新构建后，在正式 `v1.7.3.7` 环境只读覆盖 Backend/Node，三项专项全部通过、退出码 0：多步工具回退 77.63 秒、SIGKILL 保护 85.27 秒、1 秒停服超时保护 80.24 秒。前者恢复第二步，两个模型调用、一次工具结果、两笔结算；后两者停服时均为 `running:999900:100`，重启后保持一个失败任务、一笔 `uncertain` 订单、可用 999900/冻结 100、实收 0、一个 `submission_unknown` 路由记录、上游调用一次，未自动退款或重发。Backend SHA-256 为 `e42f0a75a7dd30581ae302424cb3f1bb4ce6f43eb692299b9157c9f44a119303`，Node 为 `3a35505a19aa8d95717f6a149e82b7422e61915bd1040219857194833f0e0de9`，测试程序为 `48fda1178c7d470613b8a3feda5a723761f1c04d010ed6c2a8413cc12497d1cc`。隔离容器、卷及网络清理完成，生产五服务健康。证据 `product-agent-final-pass.jpg`；这仍是发布前补丁验收，正式版本元数据准备为 `v1.7.3.8`，尚未部署。
+最终源码重新构建后，在正式 `v1.7.3.7` 环境只读覆盖 Backend/Node，三项专项全部通过、退出码 0：多步工具回退 77.63 秒、SIGKILL 保护 85.27 秒、1 秒停服超时保护 80.24 秒。前者恢复第二步，两个模型调用、一次工具结果、两笔结算；后两者停服时均为 `running:999900:100`，重启后保持一个失败任务、一笔 `uncertain` 订单、可用 999900/冻结 100、实收 0、一个 `submission_unknown` 路由记录、上游调用一次，未自动退款或重发。Backend SHA-256 为 `e42f0a75a7dd30581ae302424cb3f1bb4ce6f43eb692299b9157c9f44a119303`，Node 为 `3a35505a19aa8d95717f6a149e82b7422e61915bd1040219857194833f0e0de9`，测试程序为 `48fda1178c7d470613b8a3feda5a723761f1c04d010ed6c2a8413cc12497d1cc`。隔离容器、卷及网络清理完成，生产五服务健康。证据 `product-agent-final-pass.jpg`；此条仅记录发布前补丁验收，正式发布与部署见下节。
+
+### v1.7.3.8 正式发布与生产复验
+
+PR #7 检查 `41365525539`、主线发布 `41366124526`、正式 tag 发布 `41366786630` 全部成功；Release 固定到 `f6c4f337b3b92212367889eec80cba743d105632`，tag 复用同 SHA 主线检查。两架构更新器与 `SHA256SUMS` 一致，Compose Git blob 与 tag 源码一致；三个镜像的 index、amd64 manifest/config 摘要链与版本/revision 已独立核对。
+
+| 镜像 | 固定版本 index digest |
+| --- | --- |
+| `ghcr.io/anlongvip/open-ai-canvas-backend:1.7.3.8` | `sha256:faf15c8c712bcd666e22af8beaf7cadb0d5dd5ccc151ab55ac59783b60979cb1` |
+| `ghcr.io/anlongvip/open-ai-canvas-web:1.7.3.8` | `sha256:1faa0176134f61f2b826c4630deefe50f5a26c2321c2d8cc25f44ea588089782` |
+| `ghcr.io/anlongvip/open-ai-canvas-yingce-agent:1.7.3.8` | `sha256:3321b8fd83286158a503d291392acfa4ccceabb30c263f5caf9f74a6045b4b37` |
+
+生产操作 `aa7254a45736a7c7d33ec93e` 于北京时间 2026-11-02 08:34:57 成功，从 `v1.7.3.7` 完成拉取、停服后最终备份、迁移、切换与 30 秒稳定窗口。三个业务容器实际 digest 与上表一致，revision/version 正确、重启次数 0；五服务 healthy、Host Updater active，公开 readiness 为 `ready=true`、schema `77/77`、活动 Worker 0。运行中的更新器及磁盘文件 SHA-256 均为 `705ae7b6352fedf29ea796e43b501d2cdabb7079e59a081dcd935ee7e5242c20`，与 Release 一致；刷新真实后台后当前/最新及侧栏均显示 `v1.7.3.8`。
+
+最终备份 `backup-20261102-003313` 来源 `v1.7.3.7`，1247324563 字节，SHA-256 为 `3209ac586900730d687526167148acb267bf579ab7a280e58d9e6e4a2e52b61e`。独立重算摘要与 ZIP 全项 CRC 通过，包含 125 字节 `metadata.json`、2679205 字节 `database.dump` 和 1244644864 字节 `backend-data.tar`。此轮未落盘恢复该生产备份，完整性检查不能代替生产回退实测。证据为本地忽略目录 `production-v1.7.3.8-update.jpg`、`production-v1.7.3.8-backup.jpg`。
+
+正式三镜像在明确移除 `CANVAS_HOSTUPDATE_PRODUCT_BACKEND_BINARY` 与 `CANVAS_HOSTUPDATE_PRODUCT_AGENT_SCRIPT` 后，再次执行 `TestProductAgentToolRoundRollback` 通过（82.18 秒、退出码 0）。备份前为 `running:1:999900:0:1`，真实迁移失败回退后恢复第二步，两个模型调用、一次成功工具结果、两笔结算及最终会话保存；没有重复执行工具。使用独立空库、内部网络及模拟上游，未访问生产数据或收费服务；测试容器、卷和网络已清理，生产五服务持续 healthy。证据 `product-agent-v1.7.3.8-pass.jpg`。
+
+升级后真实创作历史仍为 30 个任务、运行中 0、余额 104.18。原小球及三参考任务均已完成/已结算，实收分别为 0.2375、1.0175 积分；原小球视频通过真实播放器完整播放，进度显示 `0:05 / 0:05`。此轮没有新增收费任务或修改生产账务；平台取消确认/失败终态后的真实自动退款仍缺关联账单证据。播放证据为 `production-v1.7.3.8-video.jpg`。
 
 ## 真实环境配置顺序
 
