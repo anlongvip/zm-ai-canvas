@@ -22,6 +22,8 @@ type taskAdmission struct {
 	NonBillable  bool
 }
 
+var errTaskAdmissionDraining = errors.New("task admission paused for maintenance")
+
 // CreateTask 收敛任务进入系统前的 admission 流程：输入标准化、逻辑模型路由、
 // 能力/额度校验和持久化。执行阶段由 worker 与 provider 相关模块负责。
 // CreateTask 校验并创建一条生成任务。
@@ -32,7 +34,7 @@ func (s *Service) CreateTask(userID string, req CreateTaskRequest) (*model.Task,
 		return nil, BadAuthRequest("Agent 任务必须通过 Agent 接口创建")
 	}
 	if s.IsDraining() {
-		return nil, &AppError{Status: 503, Code: 503, Message: "服务正在维护，暂不接受新的生成任务", Retryable: true}
+		return nil, &AppError{Status: 503, Code: 503, Message: "服务正在维护，暂不接受新的生成任务", Retryable: true, Cause: errTaskAdmissionDraining}
 	}
 	prompt := strings.TrimSpace(req.Prompt)
 	taskType := strings.TrimSpace(req.Type)

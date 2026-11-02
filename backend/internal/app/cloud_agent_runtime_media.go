@@ -85,6 +85,9 @@ func (s *Service) enqueueCloudAgentTask(run *model.CloudAgentExecution, state *c
 	req.creationPrepare = prepare
 	task, err := s.CreateTask(run.UserID, req)
 	if err != nil {
+		if media == nil && errors.Is(err, errTaskAdmissionDraining) {
+			return err
+		}
 		if media != nil {
 			return s.cloudAgentMediaError(run, state, "admission", false, false, err)
 		}

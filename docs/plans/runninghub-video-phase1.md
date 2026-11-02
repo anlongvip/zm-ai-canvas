@@ -4,7 +4,7 @@
 
 将 RunningHub 工作流 `2112923637551575042` 接入影策系统视频模型，使视频工作台、画布和自动做剧可以统一选择并调用该模型。
 
-开发基线：`codex/runninghub-phase1-complete`；集中修复已通过 PR #5 合入，生产已通过 Host Updater 升级到 `v1.7.3.6`，backend、web、yingce-agent 的实际 revision 均为 `11b4f379d0bd4fac8d031c6cbb0bcf5a34b6a0c8`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。结算后的余额动态刷新已通过真实 Standard 任务；新版原小球视频、历史结算及余额只读复验通过。正式产品镜像的隔离迁移失败、启动失败及 readiness 异常回退已通过。活动 Agent 验收发现最终会话保存缺口，修复后的本地二进制已通过隔离回退测试，尚未发布到生产；复杂 Agent 排空及平台真实退款等边界仍待验收。
+开发基线：`codex/runninghub-phase1-complete`；集中修复及 Agent 收尾修复已通过 PR #5、#6 合入，生产已通过 Host Updater 升级到 `v1.7.3.7`，backend、web、yingce-agent 的实际 revision 均为 `fcfea88dc509b7ff14b744f4adae833734072567`。五服务 healthy、Host Updater active，readiness 为 `ready=true`、schema `77/77`、活动 worker 任务数 0。停服后最终 ZIP 备份、迁移和 30 秒稳定窗口通过；旧部署配置、旧镜像和备份保留。结算后的余额动态刷新已通过真实 Standard 任务；新版原小球视频、历史结算及余额只读复验通过。正式产品镜像的隔离迁移失败、启动失败及 readiness 异常回退已通过。活动 Agent 最终会话保存缺口已修复，`v1.7.3.7` 正式镜像在无本地补丁覆盖的隔离回退验收中通过；复杂 Agent 排空及平台真实退款等边界仍待验收。
 
 ## RunningHub 配置
 
@@ -236,9 +236,43 @@ Windows 后端最终回归其余 37 包无失败、App 四分片共 1388 项通�
 
 本地 Agent、Worker、恢复与排空专项通过（21.115 秒），Host Updater 与 server 整包通过（4.746 / 6.482 秒），三包 `go vet` 通过。服务器在缓存的正式 `v1.7.3.6` 镜像环境中只读挂载本地交叉编译 Backend 复验，通过耗时 84.59 秒、退出码 0。最终备份前严格得到 `completed:1:999900:0:1`（会话完成、一个成功模型任务、测试余额 999900、冻结 0、一份含最终回答的快照）；回退后仍只调用一次模型、结算一次 100 microcredits。测试容器、卷与网络均清理。
 
-这次使用 PostgreSQL 路径的 `CGO_ENABLED=0` 本地补丁二进制覆盖隔离 Backend，不是新正式镜像发布或生产复验。补丁 SHA-256 为 `8e52cf2df23bce09ef4af9322f43e516c00943cb5a1ab852b72ce205e04f3da0`，测试程序为 `23317a0143fe7bab3dddfab2596ffc89cc75d81f0339d5e87ac7f811b02b9586`；截图为本地忽略目录 `product-agent-rollback-pass.jpg`。生产仍运行未包含这次修复的 `v1.7.3.6`。
+发布前这次使用 PostgreSQL 路径的 `CGO_ENABLED=0` 本地补丁二进制覆盖隔离 Backend，不是正式镜像发布或生产复验。补丁 SHA-256 为 `8e52cf2df23bce09ef4af9322f43e516c00943cb5a1ab852b72ce205e04f3da0`，测试程序为 `23317a0143fe7bab3dddfab2596ffc89cc75d81f0339d5e87ac7f811b02b9586`；截图为本地忽略目录 `product-agent-rollback-pass.jpg`。当时生产仍为 `v1.7.3.6`；后续正式发布与验收如下。
 
-当前剩余边界为修复正式发布与生产复验、真实平台取消/失败退款、Agent 多步工具及超时/强制中止恢复、跨版本失败迁移、完整健康超时循环。单次最终回答排空和隔离测试不能替代这些证据；不对生产注入故障，也不为验收追加收费生成。
+### v1.7.3.7 正式发布与生产复验
+
+PR #6 质量检查 run `41357467480`、主线镜像发布 run `41358058777`、正式 tag 发布 run `41358601051` 均成功，Release 固定到 `fcfea88dc509b7ff14b744f4adae833734072567`。tag 复用同 SHA 的主线检查并重新构建正式镜像。三个镜像的 Linux amd64 config 均为上述 revision 和 `v1.7.3.7`；四项 Release 资产下载摘要与 GitHub 记录一致，两架构更新器与 `SHA256SUMS` 一致，Compose 的 Git blob 与 tag 源文件一致。
+
+| 镜像 | 固定版本 index digest |
+| --- | --- |
+| `ghcr.io/anlongvip/open-ai-canvas-backend:1.7.3.7` | `sha256:8ab3c49d8018ae0ced7077181d905878c48a07d5fa659d4abf77500621078ac5` |
+| `ghcr.io/anlongvip/open-ai-canvas-web:1.7.3.7` | `sha256:03937d1ccddbbf71799f1f1d25bae40e7ed4897f01c68a11b12b7dfe1d2fdc7f` |
+| `ghcr.io/anlongvip/open-ai-canvas-yingce-agent:1.7.3.7` | `sha256:4b08fc3361a20bdf82f6e96f3e7076da793b5b9cd3b8e942114eed3d774f66b6` |
+
+生产更新操作 `c3d0b5334ddcd98bafe9a69b` 于北京时间 2026-11-02 06:52:22 成功，从 `v1.7.3.6` 完成拉取、停服、最终备份、迁移、切换与 30 秒稳定窗口。三个业务容器的实际 digest 与上表一致，revision/version 正确、重启次数 0；五服务 healthy、Host Updater active。运行中的更新器及磁盘文件 SHA-256 均为 `f1c62b2ac118d02ff6c06784bd6da662490529ffe5ebbe6c53208d230faad8e1`，与 Release 一致。公开 readiness 返回 `ready=true`、schema `77/77`、活动 worker 任务数 0；后台刷新后显示当前/最新均为 `v1.7.3.7`、更新成功。
+
+最终备份 `backup-20261101-225039` 来源 `v1.7.3.6`，为 1159158932 字节，SHA-256 为 `393d53c534fbdff618e554e22b6b994ed1fae5724b6704e545307648281760eb`。独立重算摘要及 ZIP 全项 CRC 通过，包含 `metadata.json`、2681509 字节的 `database.dump`、1156476928 字节的 `backend-data.tar`。本次未再次落盘恢复生产备份；不得将完整性检查写成生产回退实测。
+
+随后将相同 `TestProductActiveAgentRollback` 指向正式 `v1.7.3.7` 镜像，明确移除 `CANVAS_HOSTUPDATE_PRODUCT_BACKEND_BINARY`，不挂载本地补丁。正式远程 Agent、模型 Worker、账务、最终会话快照、备份及迁移失败回退验收通过，耗时 82.81 秒、退出码 0；备份前为 `completed:1:999900:0:1`，回退后保持一次模型调用、一次 100 microcredits 结算及一份最终回答快照。独立容器、卷及网络均已清理，生产五服务保持 healthy。没有复制生产配置、数据或密钥，也没有调用收费上游。
+
+生产只读复验保留原小球与三参考任务，实收分别为 0.2375、1.0175 积分，余额 104.18、运行中 0。原小球 usage 仍为 95 秒、`consumeMoney=0.019`；原视频解码 1280×736、5.166667 秒，完整播放取得 `ended=true`、`readyState=4`、`error=null`。没有新增收费任务或修改生产账务。证据为本地忽略目录中的 `production-v1.7.3.7-update.jpg`、`production-v1.7.3.7-video.jpg`、`production-v1.7.3.7-task.jpg`、`production-v1.7.3.7-backup.jpg` 和 `product-agent-v1.7.3.7-pass.jpg`。
+
+该阶段剩余边界为真实平台取消/失败退款、Agent 多步工具及超时/强制中止恢复、跨版本失败迁移、完整健康超时循环；后续隔离验收进展见下节。不对生产注入故障，也不为验收追加收费生成。
+
+### 多步 Agent 维护暂停与隔离边界验证
+
+多步工具场景复现另一处缺口：维护开始后首个模型步骤完成并执行工具，下一模型步骤被任务准入的 503 拒绝，原逻辑将整个 Agent 标记为失败。修复将维护拒绝保留为内部可识别原因；先接管已有模型步骤，在新步骤准入处暂停，Node 保存会话快照并正常退出，恢复时继续原工具结果。暂停不新建任务或订单、不修改余额；真正的运行时或快照保存错误仍向上返回。媒体任务审批错误处理保持原有语义，未改数据库或外部 API。
+
+本地真实 Node、模拟 SSE、SQLite 任务与账务恢复回归通过，断言一次工具执行、一次最终回答、两个模型步骤和两笔各 100 microcredits 的结算，冻结归零。Agent/StopWorker/启动恢复范围通过（73.029 秒），维护准入、旧步骤接管及 503 专项通过；Host Updater、runtime、yingceagent、server 整包、相关 `go vet`、Node 语法检查和 diff 检查通过。
+
+`TestProductAgentToolRoundRollback` 使用正式 `v1.7.3.7` 镜像环境，只读覆盖本地 Backend 和 Node 脚本；真实远程 Agent、PostgreSQL、模型 Worker、账务、最终备份与迁移失败回退通过（83.25 秒、退出码 0）。备份前为 `running:1:999900:0:1`，回退后完成第二步，两个模型调用、一个成功工具结果、两笔结算。测试隔离容器、卷和网络已清理，生产五服务 healthy；该补丁未发布。此次 Backend 二进制早于将 sentinel 分支限定为模型路径的一行调整，不能表述为最终源码逐字构建的验收。
+
+正式镜像跨版本验收 `v1.7.3.6 → v1.7.3.7` 已通过：目标真实迁移报告 schema 77 校验和不一致后，恢复来源版本的数据库原标记、数据文件、配置密钥摘要和真实 readiness，耗时 76.80 秒、退出码 0。未覆盖本地补丁，使用缓存镜像及本地 Compose 替代远端下载；隔离资源已清理，生产五服务保持健康。证据为本地忽略目录 `product-cross-version-pass.jpg`。
+
+健康循环用 Go 1.25 `testing/synctest` 虚拟时钟运行真实 `verifyHealthy`：readiness 503、版本错误、HTTP 200 业务失败各执行 300 次检查并走完 10 分钟；单请求超时执行 86 次，耗时 10 分 2 秒；稳定窗口中途失败后重新累计连续 30 秒。全部通过，这是模拟 HTTP 与虚拟时钟证据，不是 Docker 实际等待十分钟的回退实验。
+
+强杀与停服超时首轮使用正式 `v1.7.3.7`，两项均触发既有提交不确定保护：没有上游任务 ID 的文本请求不自动重发，run 报告“为避免重复扣费已停止自动重发”。原测试错误预期自动续跑，分别在 84.92 / 78.89 秒失败，不能计作通过；未因此放宽防重复提交。专项改为核对原任务失败、单笔订单待核对、原冻结积分保留、仅一次上游调用。1 秒停服期限已实际耗尽并报告 `context deadline exceeded`，没有伪报优雅退出。
+
+最终源码重新构建后，在正式 `v1.7.3.7` 环境只读覆盖 Backend/Node，三项专项全部通过、退出码 0：多步工具回退 77.63 秒、SIGKILL 保护 85.27 秒、1 秒停服超时保护 80.24 秒。前者恢复第二步，两个模型调用、一次工具结果、两笔结算；后两者停服时均为 `running:999900:100`，重启后保持一个失败任务、一笔 `uncertain` 订单、可用 999900/冻结 100、实收 0、一个 `submission_unknown` 路由记录、上游调用一次，未自动退款或重发。Backend SHA-256 为 `e42f0a75a7dd30581ae302424cb3f1bb4ce6f43eb692299b9157c9f44a119303`，Node 为 `3a35505a19aa8d95717f6a149e82b7422e61915bd1040219857194833f0e0de9`，测试程序为 `48fda1178c7d470613b8a3feda5a723761f1c04d010ed6c2a8413cc12497d1cc`。隔离容器、卷及网络清理完成，生产五服务健康。证据 `product-agent-final-pass.jpg`；这仍是发布前补丁验收，正式版本元数据准备为 `v1.7.3.8`，尚未部署。
 
 ## 真实环境配置顺序
 

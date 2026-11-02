@@ -93,6 +93,9 @@ func startLiveAgentService(t *testing.T, upstream *liveUpstream, permissionMode 
 				return
 			default:
 			}
+			if s.IsDraining() {
+				return
+			}
 			_ = s.ProcessNextTask()
 			time.Sleep(20 * time.Millisecond)
 		}

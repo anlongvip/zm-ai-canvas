@@ -59,6 +59,8 @@ func TestCloudAgentModelStepAdoptsOrphanedStepTask(t *testing.T) {
 	}
 
 	// 第二个进程：重新发起同一步。
+	// 即使开始维护，已创建且占用预算的步骤也必须先交回结果。
+	s.BeginDrain()
 	result, _, err := s.runCloudAgentModelStep(context.Background(), "user", run.ID, messages, "off")
 	if err != nil {
 		t.Fatal(err)
