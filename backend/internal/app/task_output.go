@@ -62,15 +62,6 @@ type TaskClientContext struct {
 
 // TaskBillingSummary 是任务列表展示的计费摘要。冻结额与实收分列：只有已结算订单才有实收。
 type TaskBillingSummary = model.TaskBillingSummary
-	// AmountMicrocredits 是下单时的冻结额（预授权），不是实际扣费；与 ReservedMicrocredits 相同。
-	AmountMicrocredits   int64 `json:"amountMicrocredits"`
-	ReservedMicrocredits int64 `json:"reservedMicrocredits"`
-	// ChargedMicrocredits 只在订单已结算（settled）时给出，是扣除差额退回后的实收。
-	ChargedMicrocredits *int64 `json:"chargedMicrocredits,omitempty"`
-	// RefundedMicrocredits 是已退回的金额：结算时的差额退回，或失败后整笔退回。
-	RefundedMicrocredits int64               `json:"refundedMicrocredits"`
-	Status               model.BillingStatus `json:"status"`
-}
 
 func taskBillingSummary(order model.BillingOrder) *TaskBillingSummary {
 	summary := &TaskBillingSummary{
