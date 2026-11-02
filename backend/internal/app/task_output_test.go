@@ -48,8 +48,23 @@ func TestTaskSummaryBillingPreservesActualAndRefundWithoutInternalPrices(t *test
 		t.Fatal(err)
 	}
 	var fields map[string]any
-	if err := json.Unmarshal(encoded, &fields); err != nil || len(fields) != 4 {
+	if err := json.Unmarshal(encoded, &fields); err != nil || len(fields) != 7 {
 		t.Fatalf("unexpected public billing contract: %s, %v", encoded, err)
+	}
+	for key, want := range map[string]float64{
+		"amountMicrocredits":         33335,
+		"actualAmountMicrocredits":   853376,
+		"refundedAmountMicrocredits": 12345,
+		"reservedMicrocredits":       33335,
+		"chargedMicrocredits":        853376,
+		"refundedMicrocredits":       12345,
+	} {
+		if fields[key] != want {
+			t.Errorf("%s = %v, want %v", key, fields[key], want)
+		}
+	}
+	if fields["status"] != string(model.BillingStatusSettled) {
+		t.Errorf("status = %v, want %q", fields["status"], model.BillingStatusSettled)
 	}
 }
 

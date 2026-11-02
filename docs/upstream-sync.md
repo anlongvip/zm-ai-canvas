@@ -2,61 +2,44 @@
 
 本仓库使用两个远程：
 
-- `origin`：`anlongvip/zm-ai-canvas`，保存二开代码和发布分支；
-- `upstream`：`ddcat-ai/open-ai-canvas`，只用于读取官方更新。
+- `origin`：`anlongvip/zm-ai-canvas`，保存二开代码、集成分支和发布版本。
+- `upstream`：`ddcat-ai/open-ai-canvas`，只用于读取作者更新。
 
-二开功能集中在 `codex/runninghub-video-phase1` 及后续 `codex/` 分支。不要直接在 `main` 上开发，也不要用官方更新覆盖二开分支。
+`origin/main` 保存已经合入的二开功能。每次从它创建集成分支，再合并作者提交；不要用作者分支覆盖自己的 `main`，也不要直接部署作者镜像替换二开镜像。
 
-## 首次保存二开基线
+## 同步步骤
 
-在 `E:\zm-ai-canvas` 执行：
+先确认工作区干净并记录当前发布版本、源提交和目标上游提交：
 
-```powershell
-git status
-git add backend web docs plugin-packages
-git commit -m "feat(runninghub): 接入视频系统渠道与运行时间计费"
-git push -u origin codex/runninghub-video-phase1
+```bash
+git status --short
+git fetch --multiple origin upstream
+git log -1 --oneline origin/main
+git log -1 --oneline upstream/main
+git switch -c codex/sync-upstream origin/main
+git merge --no-edit upstream/main
 ```
 
-提交前需要配置你自己的 Git 作者信息：
+分支名每次使用新的名称。如果合并冲突，逐处核对双方业务语义；没有 Git 冲突也不代表功能兼容。RunningHub Provider、档位配置、实际运行时间结算、取消退款、任务恢复、余额刷新及插件包属于二开范围，必须核对入口、调用方、接口字段和测试。实现范围及真实验收限制见 [RunningHub 第一阶段](plans/runninghub-video-phase1.md)。
 
-```powershell
-git config user.name "你的 GitHub 名称"
-git config user.email "你的 GitHub 邮箱"
+不要仅用版本号比较作者版本与二开版本；以提交关系和实际差异为准。当前 PR #8 从二开 `v1.7.3.8` 基线整合作者提交 `dc035d51`，后者的版本名称为 `v1.7.3.4`；这不表示需要把线上二开版本降级。
+
+## 推送前验证
+
+合并后的源码、锁文件与测试需要一起核对。迭代时先跑相关专项测试；最后提交全部改动、fetch 并整合最新远端，保持工作区干净，再执行默认范围检查：
+
+```bash
+bun scripts/verify-before-push.mjs --jobs 4
 ```
 
-## 同步官方更新
+Windows 本机使用 [Linux 验证环境](plans/local-ci-environment.md) 的 `.local/verify-linux.ps1` 入口，避免换行和路径差异。该环境具备 PostgreSQL、Redis、Pi Agent 和 Chrome；不得通过跳过失败项换取推送。
 
-每次官方发布新版本后：
-
-```powershell
-git switch codex/runninghub-video-phase1
-git fetch upstream
-git merge upstream/main
-```
-
-如果出现冲突，只处理 Git 标记出的代码冲突。RunningHub Provider、计费和插件包属于二开范围，合并后必须保留；官方无关模块按上游更新。
-
-合并后执行最小验证：
-
-```powershell
-cd backend
-go test ./internal/provider/runninghub ./internal/protocol
-go test ./internal/app -run TestRunningHub -count=1
-cd ..\web
-bun test test/model-protocols.test.ts
-bun run build
-```
-
-验证通过后推送：
-
-```powershell
-cd E:\zm-ai-canvas
-git push origin codex/runninghub-video-phase1
-```
+检查通过后推送集成分支，向自己的 `origin/main` 创建 PR，确认 GitHub Actions 针对最终提交 SHA 全部通过，包括本地未覆盖的支付插件双架构构建。旧提交的通过结果不能证明新提交可发布。
 
 ## 发布与线上数据
 
-线上发布使用二开分支构建的新版本。发布前备份数据库、OSS 和环境配置；更新代码或镜像时保留原数据库和数据卷。品牌、账号、积分、素材和 OSS 文件不在 Git 仓库中，不随代码同步或回滚。
+PR 通过和合入不等于生产已更新。发布使用自己仓库构建的新版本；在新镜像、更新器和校验文件齐备后，按现有 Host Updater 流程升级。发布前确认数据库备份和旧镜像可回滚，保留数据库、Redis、Agent、OSS、配置和数据卷。
+
+本轮环境配置与源码验证不改生产版本，服务器继续保持 `v1.7.3.8`。生产登录、生成、资源访问及账务边界仍按发布验收逐项确认；健康检查不能替代这些业务路径。
 
 禁止把 `.env`、API Key、数据库、上传文件和 `.settings-key` 提交到仓库。
