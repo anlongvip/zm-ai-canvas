@@ -37,6 +37,9 @@ type TaskBillingSummary struct {
 	AmountMicrocredits         int64         `json:"amountMicrocredits"`
 	ActualAmountMicrocredits   int64         `json:"actualAmountMicrocredits"`
 	RefundedAmountMicrocredits int64         `json:"refundedAmountMicrocredits"`
+	ReservedMicrocredits      int64         `json:"reservedMicrocredits"`
+	ChargedMicrocredits        *int64        `json:"chargedMicrocredits,omitempty"`
+	RefundedMicrocredits       int64         `json:"refundedMicrocredits"`
 	Status                     BillingStatus `json:"status"`
 }
 
