@@ -236,9 +236,10 @@ export function createGenerationTaskSubscriptionService(dependencies: Generation
     };
     const entries = new Map<string, Entry>();
     const publish = (entry: Entry, task: GenerationTask) => {
-        if (entry.scope !== getActiveUserScope() || !entry.listeners.size) return;
+        if (entry.scope !== getActiveUserScope() || !entry.listeners.size) return false;
         entry.latest = task;
         for (const listener of entry.listeners) listener(task);
+        return true;
     };
     const observe = (id: string, entry: Entry) => {
         if (entry.observation || !entry.listeners.size || entry.scope !== getActiveUserScope()) return;
@@ -250,8 +251,12 @@ export function createGenerationTaskSubscriptionService(dependencies: Generation
         entry.observation = (async () => {
             const initial = await dependencies.queryTask(id, { signal: controller.signal });
             if (controller.signal.aborted) return;
-            publish(entry, initial);
-            if (initial.status === "succeeded" || initial.status === "failed" || initial.status === "cancelled") return;
+            const published = publish(entry, initial);
+            if (!published) return;
+            if (initial.status === "succeeded" || initial.status === "failed" || initial.status === "cancelled") {
+                window.dispatchEvent(new CustomEvent("wallet:updated"));
+                return;
+            }
             const terminal = await dependencies.waitTask(id, {
                 initialTask: initial,
                 signal: controller.signal,
