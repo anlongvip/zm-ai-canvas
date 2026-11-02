@@ -1,9 +1,9 @@
 import type { GenerationTask, TaskStatus } from "@/services/api/task-center";
 
 export function taskBillingDisplayAmount(billing: NonNullable<GenerationTask["billing"]>) {
-    if (billing.status === "settled") return billing.actualAmountMicrocredits;
-    if (billing.status === "refunded") return billing.refundedAmountMicrocredits;
-    return billing.amountMicrocredits;
+    if (billing.status === "settled") return billing.chargedMicrocredits ?? 0;
+    if (billing.status === "refunded") return billing.refundedMicrocredits || billing.reservedMicrocredits;
+    return billing.reservedMicrocredits;
 }
 
 export const statusLabel: Record<TaskStatus, string> = {
