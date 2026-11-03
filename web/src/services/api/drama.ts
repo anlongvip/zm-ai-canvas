@@ -537,7 +537,17 @@ export function getDramaChapter(projectId: string, chapterId: string, signal?: A
 }
 
 export function getDramaEpisode(projectId: string, episodeId: string, signal?: AbortSignal) {
-    return http.get<DramaEpisodeDetail>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}`, { signal });
+    return http.get<DramaEpisodeDetail>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}`, { signal }).then(normalizeDramaEpisodeDetail);
+}
+
+export function normalizeDramaEpisodeDetail(detail: DramaEpisodeDetail): DramaEpisodeDetail {
+    return {
+        ...detail,
+        shots: Array.isArray(detail.shots) ? detail.shots : [],
+        segments: Array.isArray(detail.segments) ? detail.segments.map((segment) => ({ ...segment, shotIds: Array.isArray(segment.shotIds) ? segment.shotIds : [] })) : [],
+        chapters: Array.isArray(detail.chapters) ? detail.chapters : [],
+        jobs: Array.isArray(detail.jobs) ? detail.jobs : [],
+    };
 }
 
 export function updateDramaEpisode(projectId: string, episodeId: string, patch: { title?: string; sourceFormat?: DramaSourceFormat }) {
@@ -550,7 +560,7 @@ export function renameDramaEpisode(projectId: string, episodeId: string, title: 
 
 /** 在作品末尾追加一集：原文直接成为新的一集，单集最多 1.2 万字。 */
 export function addDramaEpisode(projectId: string, input: { title: string; text: string; sourceFormat: DramaSourceFormat }) {
-    return http.post<DramaEpisodeDetail>(`${base(projectId)}/episodes`, input, { timeout: 60_000 });
+    return http.post<DramaEpisodeDetail>(`${base(projectId)}/episodes`, input, { timeout: 60_000 }).then(normalizeDramaEpisodeDetail);
 }
 
 /** 修改原文；已写好的剧本不会自动重写，需要再点重新改编。 */
@@ -578,11 +588,11 @@ export function deleteDramaShot(projectId: string, shotId: string) {
 }
 
 export function approveDramaEpisode(projectId: string, episodeId: string) {
-    return http.post<DramaEpisodeDetail>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/approve`);
+    return http.post<DramaEpisodeDetail>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/approve`).then(normalizeDramaEpisodeDetail);
 }
 
 export function rescriptDramaEpisode(projectId: string, episodeId: string) {
-    return http.post<DramaEpisodeDetail>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/rescript`);
+    return http.post<DramaEpisodeDetail>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/rescript`).then(normalizeDramaEpisodeDetail);
 }
 
 export type DramaShotPatch = Partial<Pick<DramaShot, "speaker" | "dialogue" | "action" | "shotSize" | "camera" | "imagePrompt" | "videoPrompt">> & { transition?: DramaTransition; durationSeconds?: number };

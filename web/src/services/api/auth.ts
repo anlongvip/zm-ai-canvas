@@ -417,6 +417,7 @@ export function getAuthSettings() {
             linuxdoEnabled: boolean;
             emailEnabled: boolean;
             emailCodeRequired: boolean;
+            passwordRegistration: boolean;
             smsBindingAvailable: boolean;
             emailBindingAvailable: boolean;
             agreementTitle?: string;

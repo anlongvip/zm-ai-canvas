@@ -81,8 +81,8 @@ export default function RegisterPage() {
         registering.current = true;
         setSubmitting(true);
         try {
-            if (!settings?.firstUser && !verification.ticket) throw new Error("请先获取本次注册验证码");
-            await register({ username, ...(settings?.firstUser ? { email } : verification), displayName, password, acceptedTerms: agreementAccepted, ...(referralCode ? { referralCode } : {}) });
+            if (!settings?.firstUser && !settings?.passwordRegistration && !verification.ticket) throw new Error("请先获取本次注册验证码");
+            await register({ username, ...(settings?.firstUser || settings?.passwordRegistration ? { email } : verification), displayName, password, acceptedTerms: agreementAccepted, ...(referralCode ? { referralCode } : {}) });
             window.sessionStorage.removeItem(REFERRAL_CODE_STORAGE_KEY);
             const { applyUserSession } = await import("@/lib/user-session");
             await applyUserSession(await getAuthSession());
@@ -106,7 +106,7 @@ export default function RegisterPage() {
 
     const registrationClosed = settings?.registrationEnabled === false;
     const methods = settings ? verificationMethods(settings, "register") : [];
-    const verificationUnavailable = Boolean(settings && !settings.firstUser && methods.length === 0);
+    const verificationUnavailable = Boolean(settings && !settings.firstUser && !settings.passwordRegistration && methods.length === 0);
     const disabled = !settings || registrationClosed || verificationUnavailable;
 
     return (
@@ -136,7 +136,7 @@ export default function RegisterPage() {
                 </AuthField>
             </div>
 
-            {settings?.firstUser ? <AuthField label="邮箱（可选）">
+            {settings?.firstUser || settings?.passwordRegistration ? <AuthField label={settings?.firstUser ? "邮箱（可选）" : "邮箱"}>
                 <Input
                     size="large"
                     prefix={<Mail className="auth-scene-icon size-4" />}

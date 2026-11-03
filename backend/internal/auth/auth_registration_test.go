@@ -88,6 +88,46 @@ func TestRegisterAcceptedTermsCreatesEmailUser(t *testing.T) {
 	}
 }
 
+func TestRegisterWithoutEmailVerificationWhenPolicyAllows(t *testing.T) {
+	svc, db := newRegistrationTestService(t)
+	if err := db.Create(&model.User{ID: "admin", Username: "admin", Role: model.UserRoleAdmin, Status: model.UserStatusActive}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.SystemSetting{Key: registrationSettingKey, ValueJSON: `{"enabled":true}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.SystemSetting{Key: authPolicyKey, ValueJSON: `{"passwordRegistration":true}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.SystemSetting{Key: emailSettingKey, ValueJSON: `{"registrationAllowedDomains":["example.com"]}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	result, err := svc.Register(RegisterRequest{Username: "member", Email: "member@example.com", Password: "password", AcceptedTerms: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.User.EmailVerifiedAt != nil {
+		t.Fatal("email registered without verification must not be marked verified")
+	}
+}
+
+func TestRegisterWithoutVerificationIsRejectedWhenPolicyDisabled(t *testing.T) {
+	svc, db := newRegistrationTestService(t)
+	if err := db.Create(&model.User{ID: "admin", Username: "admin", Role: model.UserRoleAdmin, Status: model.UserStatusActive}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.SystemSetting{Key: registrationSettingKey, ValueJSON: `{"enabled":true}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.SystemSetting{Key: authPolicyKey, ValueJSON: `{"emailRegistration":true}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.Register(RegisterRequest{Username: "member", Email: "member@example.com", Password: "password", AcceptedTerms: true})
+	if err == nil {
+		t.Fatal("registration without verification must be rejected")
+	}
+}
+
 func TestLinuxDORegistrationAgreement(t *testing.T) {
 	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

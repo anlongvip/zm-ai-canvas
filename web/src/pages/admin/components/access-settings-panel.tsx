@@ -9,6 +9,7 @@ import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { getAdminLinuxDOSetting, getAdminRegistrationSetting, updateAdminLinuxDOSetting, updateAdminRegistrationSetting, type LinuxDOSetting, type RegistrationSetting } from "@/services/api/wallet";
 import { AdminStatusBadge, configuredSecretText, SettingsSectionCard } from "./admin-ui";
 import { Select } from "@/components/ui/base/select";
+import { getVerificationPolicy, saveVerificationPolicy, type VerificationPolicy } from "@/services/api/verification";
 
 const DEFAULT_AGREEMENT_TEMPLATE = `一、服务说明与接受
 欢迎使用本平台提供的 AI 影视与内容创作服务。在注册或使用本平台各项功能前，请务必仔细阅读并理解本协议。当您勾选同意或点击注册、登录按钮，即表示您已自愿接受本协议所有条款的约束。
@@ -39,6 +40,8 @@ export default function AccessSettingsPanel() {
     const [refreshing, setRefreshing] = useState(false);
     const [savingLinuxDO, setSavingLinuxDO] = useState(false);
     const [savingRegistration, setSavingRegistration] = useState(false);
+    const [policy, setPolicy] = useState<VerificationPolicy | null>(null);
+    const [savingPolicy, setSavingPolicy] = useState(false);
     const [savingAgreement, setSavingAgreement] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [draftLinuxDOEnabled, setDraftLinuxDOEnabled] = useState(false);
@@ -59,10 +62,11 @@ export default function AccessSettingsPanel() {
             else setRefreshing(true);
             setLoadError("");
             try {
-                const [linuxdoData, registrationData] = await Promise.all([getAdminLinuxDOSetting(), getAdminRegistrationSetting()]);
+                const [linuxdoData, registrationData, policyData] = await Promise.all([getAdminLinuxDOSetting(), getAdminRegistrationSetting(), getVerificationPolicy()]);
                 if (requestVersion !== requestVersionRef.current) return;
                 setLinuxdo(linuxdoData.setting);
                 setRegistration(registrationData.setting);
+                setPolicy(policyData);
                 setAgreementTitle(registrationData.setting.agreementTitle || "");
                 setAgreementContent(registrationData.setting.agreementContent || "");
                 setAgreementDirty(false);
@@ -218,6 +222,22 @@ export default function AccessSettingsPanel() {
         void toggleRegistration(enabled).catch(() => undefined);
     };
 
+    const toggleRegistrationVerification = async (required: boolean) => {
+        if (!policy || savingPolicy) return;
+        const expected = { ...policy, passwordRegistration: !required, emailRegistration: required, smsRegistration: false, smsAndEmailRegistration: false };
+        setSavingPolicy(true);
+        try {
+            const result = await saveVerificationPolicy(expected);
+            if (Object.entries(expected).some(([key, value]) => result[key as keyof VerificationPolicy] !== value)) throw new Error("服务端返回的注册策略与保存内容不一致，请刷新核对");
+            setPolicy(result);
+            message.success(required ? "已启用邮箱验证码注册" : "已关闭注册验证码，用户填写邮箱和密码即可注册");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "保存注册策略失败");
+        } finally {
+            setSavingPolicy(false);
+        }
+    };
+
     const saveLinuxDO = async (values: LinuxDOFormValues) => {
         const expected = normalizeLinuxDOFormValues(values);
         setSavingLinuxDO(true);
@@ -312,7 +332,7 @@ export default function AccessSettingsPanel() {
                             撤销调整
                         </Button>
                     ) : null}
-                    <Button icon={<RefreshCw className="size-4" />} loading={refreshing} disabled={savingLinuxDO || savingRegistration} onClick={requestRefresh}>
+                    <Button icon={<RefreshCw className="size-4" />} loading={refreshing} disabled={savingLinuxDO || savingRegistration || savingPolicy} onClick={requestRefresh}>
                         刷新状态
                     </Button>
                 </div>
@@ -346,6 +366,23 @@ export default function AccessSettingsPanel() {
                             <span>{formatSettingTime(registration.updatedAt, "当前来自部署环境默认值")}</span>
                         </div>
                         <Switch checked={registration.enabled} loading={savingRegistration} disabled={loading || refreshing || savingLinuxDO} onChange={requestRegistrationChange} aria-label="允许创建新账号，切换后立即生效" />
+                    </div>
+                    <div className="admin-access-registration-policy">
+                        <span className="admin-access-policy-icon">
+                            <ShieldCheck className="size-5" aria-hidden="true" />
+                        </span>
+                        <div className="admin-access-policy-copy">
+                            <strong>注册时要求邮箱验证码</strong>
+                            <p>关闭后使用邮箱、用户名和密码直接注册，不发送验证码。邮箱仍需符合格式及域名规则，且不会标记为已验证。</p>
+                            <span>切换即保存，并替换当前短信或双重验证注册方式；重新开启前须启用邮件服务。注册总开关仍然有效。</span>
+                        </div>
+                        <Switch
+                            checked={policy ? !policy.passwordRegistration : true}
+                            loading={savingPolicy}
+                            disabled={!policy || loading || refreshing || savingPolicy}
+                            onChange={(required) => void toggleRegistrationVerification(required)}
+                            aria-label="注册时要求邮箱验证码"
+                        />
                     </div>
                 </SettingsSectionCard>
             </div>

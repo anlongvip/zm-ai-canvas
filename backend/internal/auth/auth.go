@@ -181,7 +181,7 @@ func (s *Service) Register(req RegisterRequest) (*AuthSessionResult, error) {
 			if err != nil {
 				return nil, err
 			}
-			if !p.allows("register", "email") || req.Phone != "" {
+			if (!p.PasswordRegistration && !p.allows("register", "email")) || req.Phone != "" {
 				return nil, kernel.BadAuthRequest("请先获取本次注册验证码")
 			}
 			if email == "" {
@@ -190,9 +190,11 @@ func (s *Service) Register(req RegisterRequest) (*AuthSessionResult, error) {
 			if err := s.validateRegistrationEmailDomain(email); err != nil {
 				return nil, err
 			}
-			verifiedCode, err = s.VerifyRegistrationEmailCode(email, req.EmailCode)
-			if err != nil {
-				return nil, err
+			if !p.PasswordRegistration {
+				verifiedCode, err = s.VerifyRegistrationEmailCode(email, req.EmailCode)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

@@ -11,6 +11,7 @@ import (
 const authPolicyKey = "auth_verification_policy"
 
 type VerificationPolicy struct {
+	PasswordRegistration bool `json:"passwordRegistration"`
 	SMSLogin                bool `json:"smsLogin"`
 	EmailLogin              bool `json:"emailLogin"`
 	SMSRegistration         bool `json:"smsRegistration"`
@@ -42,6 +43,9 @@ func (s *Service) AdminVerificationPolicy(actor *model.User) (*VerificationPolic
 func (s *Service) UpdateVerificationPolicy(actor *model.User, p VerificationPolicy) (*VerificationPolicy, error) {
 	if err := s.host.RequireAdmin(actor); err != nil {
 		return nil, err
+	}
+	if p.PasswordRegistration && (p.SMSRegistration || p.EmailRegistration || p.SMSAndEmailRegistration) {
+		return nil, kernel.BadAuthRequest("免验证码注册不能与验证码注册同时开启")
 	}
 	if p.SMSAndEmailRegistration && (p.SMSRegistration || p.EmailRegistration) {
 		return nil, kernel.BadAuthRequest("短信+邮箱同时验证不能与单一验证注册同时开启")
