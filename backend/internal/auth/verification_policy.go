@@ -3,7 +3,9 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+
 	"gorm.io/gorm"
+
 	"yingce/backend/internal/kernel"
 	"yingce/backend/internal/model"
 )
@@ -12,10 +14,10 @@ const authPolicyKey = "auth_verification_policy"
 
 type VerificationPolicy struct {
 	PasswordRegistration bool `json:"passwordRegistration"`
-	SMSLogin                bool `json:"smsLogin"`
-	EmailLogin              bool `json:"emailLogin"`
-	SMSRegistration         bool `json:"smsRegistration"`
-	EmailRegistration       bool `json:"emailRegistration"`
+	SMSLogin             bool `json:"smsLogin"`
+	EmailLogin           bool `json:"emailLogin"`
+	SMSRegistration      bool `json:"smsRegistration"`
+	EmailRegistration    bool `json:"emailRegistration"`
 	SMSAndEmailRegistration bool `json:"smsAndEmailRegistration"`
 }
 

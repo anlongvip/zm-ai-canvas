@@ -99,7 +99,7 @@ func TestRegisterWithoutEmailVerificationWhenPolicyAllows(t *testing.T) {
 	if err := db.Create(&model.SystemSetting{Key: authPolicyKey, ValueJSON: `{"passwordRegistration":true}`}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&model.SystemSetting{Key: emailSettingKey, ValueJSON: `{"registrationAllowedDomains":["example.com"]}`}).Error; err != nil {
+	if err := db.Model(&model.SystemSetting{}).Where("key = ?", emailSettingKey).Update("value_json", `{"enabled":true,"host":"smtp.example.com","port":587,"fromEmail":"sender@example.com","registrationAllowedDomains":["example.com"]}`).Error; err != nil {
 		t.Fatal(err)
 	}
 	result, err := svc.Register(RegisterRequest{Username: "member", Email: "member@example.com", Password: "password", AcceptedTerms: true})
