@@ -154,10 +154,10 @@
 
 ### 新服务器一键部署
 
-先在服务器配置域名与 HTTPS，再以 root 执行以下命令。该命令固定安装 `v1.7.3.11`，从本仓库读取安装脚本、Compose 和 Release，并拉取 `ghcr.io/anlongvip/open-ai-canvas-*` 镜像：
+先在服务器配置域名与 HTTPS，再以 root 执行以下命令。该命令固定安装 `v1.7.3.12`，从本仓库读取安装脚本、Compose 和 Release，并拉取 `ghcr.io/anlongvip/open-ai-canvas-*` 镜像：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/anlongvip/zm-ai-canvas/v1.7.3.11/scripts/install-server-image.sh | sudo env REPOSITORY_REF=v1.7.3.11 CANVAS_IMAGE_TAG=v1.7.3.11 bash
+curl -fsSL https://raw.githubusercontent.com/anlongvip/zm-ai-canvas/v1.7.3.12/scripts/install-server-image.sh | sudo env REPOSITORY_REF=v1.7.3.12 CANVAS_IMAGE_TAG=v1.7.3.12 bash
 ```
 
 首次部署会创建全新的 PostgreSQL/Redis 数据卷和随机服务密钥，默认关闭公开注册；首个注册账号成为管理员。若 GHCR 镜像包设为私有，需先向安装环境提供有读取 `read:packages` 权限的凭据。Host Updater 同时配置为检查 `anlongvip/zm-ai-canvas` 的 Release。

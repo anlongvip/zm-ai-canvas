@@ -1,4 +1,7 @@
 # CHANGELOG
+## v1.7.3.12
+- 部署：修复全新镜像安装时 Compose 错误要求旧版 `CANVAS_UPDATER_TOKEN`，直接使用安装脚本生成的 Agent Token。
+
 ## v1.7.3.11
 - 部署：一键镜像安装默认使用 anlongvip/zm-ai-canvas 的 GHCR 镜像、部署 Compose 和 Release。
 - 在线更新：Host Updater 将你的 GitHub 仓库持久写入 systemd 配置，后续检查与升级继续使用个人镜像仓库。
