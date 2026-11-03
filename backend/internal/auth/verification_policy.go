@@ -13,11 +13,11 @@ import (
 const authPolicyKey = "auth_verification_policy"
 
 type VerificationPolicy struct {
-	PasswordRegistration bool `json:"passwordRegistration"`
-	SMSLogin             bool `json:"smsLogin"`
-	EmailLogin           bool `json:"emailLogin"`
-	SMSRegistration      bool `json:"smsRegistration"`
-	EmailRegistration    bool `json:"emailRegistration"`
+	PasswordRegistration    bool `json:"passwordRegistration"`
+	SMSLogin                bool `json:"smsLogin"`
+	EmailLogin              bool `json:"emailLogin"`
+	SMSRegistration         bool `json:"smsRegistration"`
+	EmailRegistration       bool `json:"emailRegistration"`
 	SMSAndEmailRegistration bool `json:"smsAndEmailRegistration"`
 }
 
