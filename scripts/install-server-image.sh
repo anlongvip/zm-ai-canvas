@@ -2,17 +2,18 @@
 
 set -Eeuo pipefail
 
+REPOSITORY="${REPOSITORY:-anlongvip/zm-ai-canvas}"
 REPOSITORY_REF="${REPOSITORY_REF:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/open-ai-canvas}"
 CANVAS_HTTP_PORT="${CANVAS_HTTP_PORT:-3000}"
 REQUESTED_IMAGE_TAG="${CANVAS_IMAGE_TAG:-}"
 CANVAS_IMAGE_TAG="${REQUESTED_IMAGE_TAG#v}"
-IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-ghcr.io/ddcat-ai/open-ai-canvas}"
+IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-ghcr.io/anlongvip/open-ai-canvas}"
 CANVAS_BACKEND_IMAGE=""
 CANVAS_WEB_IMAGE=""
 COMPOSE_FILE="docker-compose.deploy.yml"
-COMPOSE_URL="${COMPOSE_URL:-https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/${REPOSITORY_REF}/${COMPOSE_FILE}}"
-UPDATER_INSTALL_URL="${UPDATER_INSTALL_URL:-https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/${REPOSITORY_REF}/scripts/install-host-updater.sh}"
+COMPOSE_URL="${COMPOSE_URL:-https://raw.githubusercontent.com/${REPOSITORY}/${REPOSITORY_REF}/${COMPOSE_FILE}}"
+UPDATER_INSTALL_URL="${UPDATER_INSTALL_URL:-https://raw.githubusercontent.com/${REPOSITORY}/${REPOSITORY_REF}/scripts/install-host-updater.sh}"
 
 step() {
     printf '\n==> %s\n' "$1"
@@ -186,7 +187,7 @@ install_host_updater() {
     local installer
     installer="$(mktemp)"
     curl -fsSL "$UPDATER_INSTALL_URL" -o "$installer"
-    INSTALL_DIR="$INSTALL_DIR" bash "$installer"
+    INSTALL_DIR="$INSTALL_DIR" REPOSITORY="$REPOSITORY" bash "$installer"
     rm -f "$installer"
 
     step "重建 backend 以启用在线更新"
