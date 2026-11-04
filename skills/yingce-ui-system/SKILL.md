@@ -7,7 +7,22 @@ description: 影策 UI 系统规范与可执行规则。写任何前端样式、
 
 一句话：**安静、专业、靠表面明度和字号分层，不靠边框、阴影、渐变和颜色堆砌。** 用户的作品是主角，界面是工作台。
 
-开始写样式前先读：`web/src/styles/globals.css`（token）、`docs/ui-design-system.md`（全文规范）、本目录 `references/components.md`（能直接用的组件）。
+开始写样式前先读：`web/src/styles/globals.css`（token）、本目录 `references/components.md`（能直接用的组件）、`docs/plans/ui-design-system.mdx`（组件编写规范）。`AGENTS.md` 提到的 「docs/ui-design-system.md」 被 `.gitignore` 忽略、不在仓库里，克隆后读不到；以本 Skill 为准。
+
+## 地图
+
+| 位置 | 回答什么 | 代码真值 |
+| --- | --- | --- |
+| §1 | 字号、间距、圆角、层级只能用哪些值 | `web/src/styles/globals.css` |
+| §2 | 表面与明度分层（最重要） | `globals.css` 的 `--user-*`、`--library-*` |
+| §3 | 按钮与控件的颜色角色合同 | `web/src/styles/button-tokens.css`、`web/src/lib/app-theme.ts` |
+| §4 | 版面与布局 | `web/src/components/layout/workspace-page.tsx` |
+| §5–7 | 状态、动效、暗色 | `web/src/components/layout/workspace-state.tsx` |
+| §8 | 先找现成组件 | `references/components.md` |
+| §9 | 后台的独立视觉系统 | `web/src/pages/admin/theme/admin-tokens.css` |
+| §10–12 | CSS 写法、禁止项、交付前 | — |
+| `references/components.md` | 用户端、后台、画布可用组件的路径与用途 | — |
+| 画布 | 主题、层级、事件另有规则 | `skills/yingce-canvas-ui/SKILL.md` |
 
 ## 1. 硬性尺度（只能用这些值）
 
@@ -129,7 +144,8 @@ description: 影策 UI 系统规范与可执行规则。写任何前端样式、
 **写任何控件前，先在 `references/components.md` 里找。** 找到了就用，不要自己画按钮、开关、下拉、分段、弹窗、空态、提示框、Tooltip。
 
 最常用的几个：
-- 布局：`WorkspacePage`、`PageHeader`、`ListToolbar`、`CollectionGrid`、`PaginationBar`
+- 布局：`WorkspacePage`、`PageHeader`、`CollectionToolbar`（内容库工具栏）、`CollectionGrid`、`PaginationBar`
+- 画布里的组件另有一套规则：`skills/yingce-canvas-ui/SKILL.md`
 - 状态：`WorkspaceState`、`WorkspaceNoResultsState`、`WorkspaceErrorState`、`WorkspaceLoadingState`
 - 浮层：`AppModal`（`flush`）、`AppDrawer`、`AntTooltip`（500ms 延迟；不要直接用 antd `Tooltip`）
 - 控件：`SegmentedControl`、`Switch`、`Select`、`Checkbox`、`IconButton`、`StatusBadge`、`Kbd`
@@ -153,7 +169,7 @@ description: 影策 UI 系统规范与可执行规则。写任何前端样式、
 - 必须覆盖旧样式时用**更具体的作用域**（`.ecs-composer .xxx`），不要用 `!important`（除非对抗第三方内联样式且写了注释）。
 - 不写全局 `.ant-*` 覆盖；第三方覆盖限定在组件作用域内。
 - 不用裸 Tailwind 任意值（`text-[13px]`、`rounded-[10px]`、`#hex`），用 token 或注册过的工具类。
-- inline style 只用于动态值（比例预览尺寸、进度），颜色仍引用 `var(--token)`。
+- inline style 只用于动态值（比例预览尺寸、进度），颜色仍引用 token 变量（例如 `var(--user-ink-muted)`）。
 - 文件头写一段注释：这个文件管哪个页面、遵循哪些规则、与哪些旧样式的关系。
 
 ## 11. 禁止项速查

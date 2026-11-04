@@ -8,7 +8,8 @@
 | --- | --- | --- | --- |
 | `WorkspacePage` | `@/components/layout/workspace-page` | 用户端页面外壳 | 工作台两栏用 `fluid scroll={false}` |
 | `PageHeader` | 同上 | 内容库页头：标题 + meta + 说明 + 右侧命令组 | 命令顺序：主操作 → 次要 → 更多 |
-| `ListToolbar` | 同上 | 搜索 + 筛选 + 已选筛选 chip + 重置 + 右侧操作 | 筛选多时自动收进「筛选」按钮 |
+| `CollectionToolbar` | `@/components/layout/collection-toolbar` | 内容库工具栏：左边搜索与选择器，有筛选时出现「重置」，`trailing` 放视图切换 | 项目、素材、任务、技能、插件都用它；选择器自动 `filled` |
+| `ListToolbar` | `@/components/layout/workspace-page` | 搜索 + 筛选 + 已选筛选 chip + 重置 + 右侧操作 | 只在需要已选筛选 chip 时用（目前只有 Eagle 插件页） |
 | `CollectionGrid` | 同上 | 内容卡网格 | 默认 `minmax(248px,1fr)` |
 | `TableSurface` | 同上 | 用户端表格外壳 | |
 | `PaginationBar` | 同上 | 分页（总数 + 页码 + 跳页 + 每页条数） | 用户端与后台共用 |
@@ -79,6 +80,18 @@ antd `Empty` 被 lint 禁用，不要用。
 | `ListToolbar` / `PaginationBar`（后台版） | 同上 | 后台列表工具栏与分页 |
 | `AdminSegmented` / `AdminSwitch` / `AdminSelect` / `AdminCheckbox` / `AdminTooltip` / `AdminIconButton` / `AdminCallout` | `./ui/controls` | 后台控件 |
 | `AdminModal` / `AdminDrawer` | `./ui/overlays` | 后台浮层 |
+
+## 画布专用（`web/src/components/canvas/`）
+
+画布里优先用这些，规则见 `skills/yingce-canvas-ui/`。
+
+| 组件 | 路径 | 用途 |
+| --- | --- | --- |
+| `CanvasAnchoredDropdown` | `@/components/canvas/canvas-anchored-dropdown` | 一次性操作菜单，锚点移动就关闭 |
+| `CanvasToolPopover` | `@/components/canvas/canvas-tool-popover` | 跟随锚点的持续面板，离视口边 12px |
+| `canvasDockStyle` | `@/lib/canvas/canvas-aceternity-style` | 浮动面板与工具条的样式合同 |
+| `FloatingDock` | `@/components/ui/aceternity/floating-dock` | 底部工具 Dock 与节点工具条的按钮容器 |
+| 工具注册表 | `@/lib/canvas/tool-registry` | 工具条按钮、添加节点命令的唯一来源 |
 
 ## 可以照抄结构的样式文件
 

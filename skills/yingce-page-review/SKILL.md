@@ -7,6 +7,19 @@ description: 影策页面交付自检。页面、面板、弹窗、后台页改�
 
 **静态阅读代码不算验证。** 交付 UI 改动前，至少在真实路由上看过一次亮色和暗色截图。不能截图时要明确写「未在浏览器验证」，不要把类型检查通过写成页面没问题。
 
+## 地图
+
+| 位置 | 回答什么 |
+| --- | --- |
+| §1 | 怎么搭不碰用户数据的验证环境 |
+| §2 | 必须截哪些画面 |
+| §3 | 逐条检查清单：产品、版式、配色、组件、文案、交互与可访问性 |
+| §4 | 命令 |
+| §5 | 交付说明怎么写 |
+| 画布 | 另加 `skills/yingce-canvas-ui/SKILL.md` §6 的合同测试与浏览器检查 |
+| 后台 | 另对照 `docs/design/admin-ui-visual-regression-baseline.md` |
+| 规范本身 | `bun scripts/check-skills.mjs` 校验规范里的引用仍然存在 |
+
 ## 1. 验证环境
 
 - 不要动用户正在用的开发数据。宿主机开发用 `CANVAS_BACKEND_DATA_DIR=../.local/project-workbench-debug`；需要单独账号时，起一个临时数据目录的后端（例如 `/tmp/<name>-data`，另开端口），首个注册用户即管理员，再按需打开功能开关（`PATCH /api/admin/settings/features`）。
