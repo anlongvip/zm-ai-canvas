@@ -4,6 +4,51 @@
 
 每个 Skill 是一个目录，入口 `SKILL.md`，文件头 `name` / `description` 采用通用 Skill 格式，可被支持 Skills 的工具直接加载；不支持的工具把对应 `SKILL.md` 当提示词读入即可。每个 `SKILL.md` 开头都有本目录的「地图」，写明里面每个文件回答什么问题。
 
+## 0. 开工协议（每个任务都先做，不能跳过）
+
+用户的原话，照抄，不改写：
+
+> 我想要的是一个更深入的版本，而不是一个更大的版本
+>
+> 在重写题目之前：1. 请说明该领域的顶尖专家会做哪些我没有要求的事情
+>
+> 2. 请列出他们会从哪些最原始的素材入手，而不是我已经整理好的素材
+>
+> 3. 请列出他们会使用的具体方法和工具
+>
+> 4. 除了你我之外，还有什么可以证明结果是正确的？
+
+### 0.1 怎么执行
+
+1. **先答四问，再复述任务。** 在动手、复述需求或写计划之前，先在回复里写出四个问题的答案，每问 2–5 条，每条落到本仓库的具体文件、提交、测试、命令或数字。写不出具体对象的条目说明还没去看原始素材，先去看，再回来写。
+2. **然后才重写题目**：用一两句话写出「这次真正要解决的问题」。它通常比用户字面的要求更窄、更深。
+3. **交付时回到第 4 问**：交付说明里列出第 4 问里每项证据的实际结果（通过、失败、没跑及原因）。只写「已验证」不算。
+
+### 0.2 「更深入，而不是更大」的判断标准
+
+| 更深入 | 更大（不要） |
+| --- | --- |
+| 一条规则写清机制、阈值、源码位置、它防住的缺陷 | 多加十条没有来源的规则 |
+| 用真实取值替换「适当」「合理」「注意」 | 把同一条规则在三个文件里各写一遍 |
+| 找出规范和代码对不上的地方并改掉 | 照着旧文档扩写 |
+| 删掉被新规则覆盖的旧内容 | 只追加不删除 |
+| 一个页面只回答用户的那一个任务 | 把能做的功能都摆上页面 |
+
+改动说明里写**净增行数**。净增明显时要说明新增的每一块回答了哪个之前答不了的问题；答不出来就删。
+
+### 0.3 四问在影策各领域的标准答案
+
+这是起点，不是终点。每次仍要针对具体任务重答。
+
+| 领域 | 1. 专家会主动做的事 | 2. 原始素材 | 3. 方法与工具 | 4. 你我之外的证据 |
+| --- | --- | --- | --- | --- |
+| 用户页面 | 写清谁来、做完去哪；列出空 / 1 条 / 上千条 / 超长名称 / 失败 / 无权限六种数据状态；先找最接近的现有范式，不新造 | 路由 `web/src/router.tsx`、页面现有 JSX、`web/src/services/api/` 的接口类型、后端返回的 `reason`、用户反馈原话 | 3–6 步主路径、状态矩阵、`patterns.md` §0 选范式、360 / 760 / 1280 / 1600 宽度、无头 Chrome 截图 | 真实路由亮暗截图；一个没参与的人 5 秒内答出「干什么 / 下一步 / 结果在哪」；`bun run build` |
+| 画布组件 | 测 25% / 40% / 100% 缩放、1366×768 视口、工作台与画布主题交叉；数面板打开前后的 DOM 节点数；查父元素有没有建立层叠上下文 | `canvas-viewport.tsx` 的事件选择器、`canvas-wheel-intent.ts` 的常数、`canvas-theme.ts`、`web/test/canvas-*.test.ts` 的用例名、`fix(canvas)` 提交的 diff | `git log --grep` + `git show` 追缺陷原因；DevTools Performance；`document.querySelectorAll("*").length`；`bun test test/canvas-*.test.ts` | 合同测试结果；修改前后的帧率或 DOM 数字；在面板、菜单、节点文字上滚轮不误缩放 |
+| 后台 | 先列每个写操作的后果、是否幂等、响应不确定时怎么办；区分即时写入和草稿写入 | `backend/internal/handler/`、`backend/internal/app/` 的校验与响应字段、`docs/design/admin-ui-design-standard.md`、`docs/design/admin-ui-change-log.md` | 写操作清单（对象、数量、金额、后果）、响应一致性校验、`cd backend && go test ./...` | `docs/design/admin-ui-visual-regression-baseline.md` 的 18 个入口；后端测试；保存后刷新页面值不变 |
+| 界面文案 | 删到不能再删；查同一概念有没有两种叫法；报错写下一步 | 后端错误 `reason`（`docs/content/docs/backend/http-api.mdx`、`web/src/services/api/request.ts` 的 `ApiError`）、用户反馈原话、现有页面用词 | `yingce-ui-copy` §7 用词表 + grep 同义词；逐句问「删掉后用户还能完成任务吗」 | 没参与的人读一遍能说出下一步；grep 不到同义叫法 |
+| 配色 | 先问颜色表达什么；亮暗两套都看；量一屏彩色面积 | `web/src/styles/globals.css` 的 token 真值、`web/src/lib/canvas-theme.ts`、真实媒体素材 | 对比度计算（正文 ≥ 4.5:1）、亮暗截图并排 | 对比度数值；亮暗截图 |
+| 规范本身 | 先查规范和代码哪里对不上；每条规则找来源 | 代码、`git log` 的修复提交、测试用例、`git ls-files`（只认仓库里真实存在的文件） | `bun scripts/check-skills.mjs`、§5 已知偏差表 | `check-skills.mjs` 通过；规范引用的合同测试通过；CI |
+
 ## 1. 按任务找
 
 | 你要做的事 | 先读 | 再读 | 交付前 |
@@ -61,7 +106,7 @@ skills/
     └── SKILL.md
 ```
 
-## 4. 什么能证明规范是对的
+## 4. 什么能证明规范是对的（§0 第 4 问在规范层面的答案）
 
 规范本身不算证据。能证明规范和结果正确的，是下面这些不依赖写规范的人的东西：
 
@@ -87,6 +132,7 @@ skills/
 | `docs/design/canvas-floating-controls.mdx` 写的「右下工作模式切换」 | 代码里 `workspaceMode` 固定为 `professional`，没有该控件 | 以 `yingce-canvas-ui/references/anatomy.md` §6 为准 |
 | `docs/design/workspace-shell-design.mdx` 写的侧栏 260px | `--workspace-sidebar-width: 250px` | 以 token 为准 |
 | 后台「电商知识与技能」用页头标签合并两个页面 | `ecommerce-management-page.tsx` | 后台规范要求每个页面独立侧栏入口 |
+| `AGENTS.md` 引用的 「web/src/services/api/error-codes.ts」 | 文件不存在；`ApiError` 在 `web/src/services/api/request.ts`，错误码说明在 `docs/content/docs/backend/http-api.mdx` | 引用这两处 |
 | `AGENTS.md` 引用的 「docs/ui-design-system.md」，以及 「docs/content/docs/canvas/canvas-node-manual.mdx」 | 两者都被 `.gitignore` 忽略，只在个别开发机上存在，克隆仓库后读不到 | Skill 只引用 Git 跟踪的文件；`check-skills.mjs` 按 `git ls-files` 校验 |
 | 仓库里同时存在 `web/src/styles/globals-1.css` | 没有任何文件引用，内容与 `globals.css` 部分重复 | 只改 `globals.css` |
 
@@ -98,6 +144,7 @@ skills/
 
 ## 7. 维护
 
+- 改规范本身也走 §0：先答四问，再动笔；提交说明写净增行数。
 - 规范与代码不一致时**以代码为准**，修正规范；如果代码是错的，把它写进 §5，并在修复后删掉。
 - 改了 token、组件、页面结构，同一个提交里更新对应 Skill，并跑 `bun scripts/check-skills.mjs`。
 - 每条规则要么有真实例子（文件路径），要么有它防住的缺陷（提交或 Issue）。两样都给不出的规则不要写。

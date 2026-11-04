@@ -5,6 +5,8 @@ description: 影策 UI 系统规范与可执行规则。写任何前端样式、
 
 # 影策 UI 系统
 
+> 开工前先按 `skills/SKILLS.md` §0 回答四个问题（专家会主动做什么、原始素材、方法与工具、你我之外的证据），再复述任务。要的是更深入，不是更大。
+
 一句话：**安静、专业、靠表面明度和字号分层，不靠边框、阴影、渐变和颜色堆砌。** 用户的作品是主角，界面是工作台。
 
 开始写样式前先读：`web/src/styles/globals.css`（token）、本目录 `references/components.md`（能直接用的组件）、`docs/plans/ui-design-system.mdx`（组件编写规范）。`AGENTS.md` 提到的 「docs/ui-design-system.md」 被 `.gitignore` 忽略、不在仓库里，克隆后读不到；以本 Skill 为准。
