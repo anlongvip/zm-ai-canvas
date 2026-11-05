@@ -77,9 +77,11 @@ jobs:
   # 镜像构建与质量检查并行：构建只推送不可变的 sha-<commit> 标签，不会被部署使用；
   # 可变标签（latest / 版本号）的推广在 publish 中进行，并且必须等待 checks 通过。
   # 这样发布总耗时约为 max(检查, 构建) 而不是两者相加。
+  # 发版时优先复用同提交已经通过的镜像：只有 sha 镜像缺失、或无法确认该提交的 main 一轮
+  # 已成功时才重建，避免每次发版都把三张镜像重新编译一遍。
   build:
     name: Build ${{ matrix.image }} (${{ matrix.arch }})
-    needs: [prepare]
+    needs: [reuse, prepare]
     permissions:
       contents: read
       packages: write
@@ -121,9 +123,9 @@ jobs:
         run: bash .github/scripts/resolve-image.sh "$IMAGE_REF"
       - name: Build and push immutable commit image
         id: build
-        # A version tag is a release boundary: rebuild its image even if a SHA tag
-        # already exists, so a stale/corrupt SHA tag cannot be promoted as a release.
-        if: startsWith(github.ref, 'refs/tags/v') || steps.existing.outputs.found != 'true'
+        # 复用条件：该提交的 main 一轮已整体成功（reuse.verified）且同架构的 sha 镜像存在。
+        # 无法确认 main 一轮成功时退回旧行为，tag 轮一律重建，避免把不可信镜像当作发布版本。
+        if: needs.reuse.outputs.verified != 'true' || steps.existing.outputs.found != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
