@@ -43,3 +43,28 @@ PR 通过和合入不等于生产已更新。发布使用自己仓库构建的�
 本轮同步分支以 `origin/main` 的 `v1.7.3.12` 为基线，目标作者提交为 `6c1532b4`，Schema 升至 79。该同步尚未发布或部署；用户此前报告服务器为 `v1.7.3.11`，当前线上状态尚未重新核验。完成同步验证后，仍需单独完成 PR、Release 与生产升级验收。
 
 禁止把 `.env`、API Key、数据库、上传文件和 `.settings-key` 提交到仓库。
+
+## 发版脚本
+
+每次上游同步后发一版，用脚本一次完成版本号、变更记录和标签，避免手工漏改导致 tag 构建失败：
+
+```bash
+bun scripts/cut-release.mjs --dry-run   # 预览版本号与本次 CHANGELOG 条目
+bun scripts/cut-release.mjs             # 写入 VERSION/CHANGELOG，提交并打 tag（不推送）
+git push origin HEAD && git push origin vX.Y.Z.N
+```
+
+- 版本号必须与 tag 完全一致，脚本会拒绝重复版本、脏工作区、非 `main` 分支和落后于最新 tag 的历史。
+- 只用正式版本号：Host Updater 会跳过 GitHub 上的 prerelease，带 `-rc` / `-beta` 的标签发布后后台检测不到。
+- 脚本只提交 `VERSION` 与 `CHANGELOG.md`，不夹带其他改动。
+
+## 备份与镜像保留
+
+Host Updater 升级成功后会执行保留策略（`backend/internal/hostupdate/retention.go`），避免每次全量备份和旧镜像把磁盘写满：
+
+| 配置 | 默认 | 作用 |
+| --- | --- | --- |
+| `CANVAS_UPDATER_BACKUP_RETENTION` | 3 | 保留最近 N 份 `backup-*.zip`，并始终保留状态里记录的最后一份 |
+| `CANVAS_UPDATER_PRUNE_IMAGES` | true | 删除更早版本的业务镜像标签；仍被容器或回滚版本引用的镜像会被 Docker 拒绝删除并跳过 |
+
+发版前仍要确认磁盘余量：单份全量备份约 1.4GB，保留 3 份意味着至少预留 5GB。

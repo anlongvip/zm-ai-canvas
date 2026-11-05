@@ -181,3 +181,63 @@ cd web && bun run dev
 - Git 提交说明使用 `<type>(<scope>): <业务模块> - <变更摘要>`，`type` 为 `feat|fix|refactor|perf|docs|test|build|ci|chore|revert`。
 
 交付前至少检查：改动是否聚焦、调用方和类型是否同步、错误/权限/数据归属是否完整、必要文档是否同步、验证是否如实说明、是否留下密钥或本地数据。
+
+## 10. 上游同步与发版（每次上游更新 = 一次发版）
+
+本仓库是 `ddcat-ai/open-ai-canvas` 的二开（`origin` 为自有 remote）。策略是 **1:1 跟随**：作者推进一次主线，这边就同步并发布一版；服务器由管理员在后台手动「检查更新 → 开始更新」。
+
+因此流水线的目标不是「少发版」，而是「**每次发版都便宜、可重复、可回退**」。任何让单次发版变贵的环节，都要在流程里消掉，而不是靠不升级来回避。
+
+### 10.1 同步（预算 ≤ 20 分钟）
+
+1. `git fetch upstream`，记录旧/新 `upstream/main` SHA（写进 CHANGELOG 与 `docs/upstream-sync.md`）。
+2. 在 `origin/main` 上 `git merge upstream/main`；二开提交保持小粒度、按主题独立，便于上游内建同一能力后整条删除。
+3. 只处理双方都改过的文件冲突（当前约 20 余个），核对业务不变量：RunningHub 准入 / 档位 / 实际运行时间结算 / 取消退款 / 任务恢复、Agent drain、支付渠道配置、host-updater、镜像标签规则。
+4. **上游健康闸门**：合并前确认 `upstream/main` 的提交本身不是半成品（上游 CI 红、明显未完成的迁移、临时调试代码）。上游红时可以合并跟进，但**不得发版**。
+5. 运行 `bun scripts/verify-before-push.mjs --jobs 4`（默认范围约 3–4 分钟，实测 12 项 210 秒），失败先修。
+6. 推送 `origin/main`，确认同 SHA 的 CI 通过。
+
+### 10.2 发版（同一上游 SHA 只发一次；每天最多一个版本）
+
+1. **一次提交改完 VERSION 与 CHANGELOG**：优先用 `bun scripts/cut-release.mjs`（先 `--dry-run` 预览）生成条目并打 tag；`CHANGELOG.md` 必须有 `## vX.Y.Z.N` 段落，正文写明上游 SHA 范围、二开功能变化、Schema 迁移与回退条件。缺条目会让 tag 构建的 `prepare` 步骤直接失败。
+2. 打 tag 并在 CI 中**复用 main 已构建的同 SHA 镜像**；只有镜像缺失或 digest 校验失败才允许重建。
+3. Release 四件附件必须齐全：更新器二进制（amd64/arm64）、`SHA256SUMS`、`docker-compose.deploy.yml`；三张业务镜像 digest 与 tag 一致。
+4. 发布后按模板更新既有验收文档（填 SHA、digest、Schema、耗时、未覆盖项），证据放 `.local/cache/release-<version>/`，不新写一份文档。
+5. 发布成功后再通知管理员去后台手动检测更新；不要跳过 Release 直接改服务器。
+
+### 10.3 上线（后台手动，不自动定时）
+
+- 升级前只读核对：磁盘余量、上次备份存在、当前三镜像 digest、活动任务数、Schema 版本。
+- 更新器负责顺序：`pull`（不停服）→ 排空 → 停服 → 备份 → 迁移 → 切换 → 健康窗口。任何一步不要手工插队或跳过。
+- 升级后核对：版本与提交、Schema 计数、三镜像 digest、五个长期服务健康、历史任务与视频可访问、错误日志无新增 panic/5xx。
+- 备份与旧镜像保留最近 3 个版本，超出后清理；磁盘低于安全水位时**先清理再发版**，不要带着满盘执行更新。
+
+### 10.4 兼容性回归（每次发版前必跑）
+
+二开能否兼容，靠这张表而不是靠「没有冲突」：
+
+| # | 回归项 | 判定标准 |
+| --- | --- | --- |
+| 1 | RunningHub 三档（普通 / Plus / Ultra）准入与单价 | 与上一版记录逐项一致 |
+| 2 | 实际运行时间结算（`taskCostTime` → 积分） | 单价 × 时长与档位一致 |
+| 3 | 取消 / 退款链路 | 终态、退款金额与审计记录一致 |
+| 4 | 支付下单 / 查单 / 关单 | 已知 `yiyun_order_not_found` 不得扩散到新订单 |
+| 5 | Agent drain 与任务恢复 | 排空后无重复执行、无丢失会话 |
+| 6 | host-updater（版本比较、备份、回滚） | 状态机可回退、备份可校验 |
+
+上游若已内建某项能力，删除自己的对应提交，并同步更新这张表。
+
+### 10.5 禁止事项
+
+- 禁止 tag 轮无条件重建三张镜像（除非镜像缺失或 digest 不符）。
+- 禁止同一 main SHA 重复打 tag，禁止一天发布多个版本。
+- 禁止推空提交触发 CI；禁止重写已推送历史（`backend/server` 等大文件是上游产物）。
+- 禁止在未记录旧镜像、未确认备份可用的情况下回滚或降级。
+- 禁止在线上标签使用 rc / 预发布号：更新器选版只排除 draft，不排除 prerelease。
+- 禁止把一次发版拆成多轮人工重跑：VERSION、CHANGELOG、tag、Release 应一次成型。
+
+### 10.6 例外：必须人工核对 diff
+
+上游改动涉及 payment-sdk / RPC 协议、数据库 schema、计费与退款、任务恢复、Agent drain、host-updater、`docker-compose.deploy.yml` 或镜像标签规则时，逐行核对并补测试，不得以「CI 全绿」替代业务判断。
+
+同步流程与验收证据模板见 `docs/upstream-sync.md`；本节的节奏与回归清单同样适用于自动化代理。
