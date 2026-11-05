@@ -99,14 +99,16 @@ const CATEGORY = [
     [/^(chore|style|revert)/i, "维护"],
 ];
 
-// 版本号提交、合并提交、测试与空提交不进入发布说明，它们不描述用户可见变化。
+// 版本号提交、合并提交、测试与基建类提交不进入发布说明，它们不描述用户可见变化。
+// scope=release 的提交（发版脚本、CI、文档）都属于基建，一律跳过。
 function isNoise(subject) {
     return (
+        /^[a-z]+\(release\)/i.test(subject) ||
         /^chore\(release\)/i.test(subject) ||
         /^Merge\b/i.test(subject) ||
-        /^ci:\s/i.test(subject) ||
+        /^ci[:(]/i.test(subject) ||
         /^test[:(]/i.test(subject) ||
-        /^docs\(release\)/i.test(subject) ||
+        /^docs\(agents\)/i.test(subject) ||
         /版本发布/.test(subject)
     );
 }
