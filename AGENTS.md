@@ -241,3 +241,27 @@ cd web && bun run dev
 上游改动涉及 payment-sdk / RPC 协议、数据库 schema、计费与退款、任务恢复、Agent drain、host-updater、`docker-compose.deploy.yml` 或镜像标签规则时，逐行核对并补测试，不得以「CI 全绿」替代业务判断。
 
 同步流程与验收证据模板见 `docs/upstream-sync.md`；本节的节奏与回归清单同样适用于自动化代理。
+
+### 10.7 代理执行约定
+
+本仓库的同步与发版默认由代理执行，用户负责生产动作的最终确认。
+
+**工作目录**
+- 主工作区 `E:\zm-ai-canvas`：用户编辑入口，可能长期存在未提交改动；不要 stash、不要 checkout 覆盖、不要提交它们。
+- 发版工作区 `E:\canvas-release`：干净的 `main` 检出，专门用于验证与 `cut-release`。
+- 历史 Codex worktree 视为只读参考，不要在其中开发，也不要删除（可能存有未落库的 `.local/` 脚本）。
+
+**每次开工先核对并报告**：`git log --oneline origin/main..main`、`git status --short`、`git worktree list`；核对完再动手，不要凭上次记忆。
+
+**每次发版的固定动作**
+1. 同步：merge 上游 → 只处理双方都改过的文件 → 跑 `bun scripts/verify-before-push.mjs --jobs 4`（Linux 入口）。
+2. 推送 `main`，等 CI 全绿。
+3. 在 `E:\canvas-release` 跑 `bun scripts/cut-release.mjs --dry-run`，把版本号与条目报给用户；`--push` 前需用户确认。
+4. 确认 tag 轮 `Build` 为 skipped（复用镜像）。
+5. 用户在生产后台点更新；代理提供核对清单并判读结果。
+6. 记录：版本、提交、三镜像 digest、Schema、耗时、未覆盖项。
+
+**边界**
+- 生产操作（后台「开始更新」、回滚、改服务器配置、执行 `docker` / `systemctl`）由用户执行或明确授权；代理不自行触发。
+- 代理不宣称未验证的结论；无法覆盖的部分要明确写出「未验证」。
+- 汇报格式：做了什么 → 结果 → 下一步等什么确认，三行以内。
