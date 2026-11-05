@@ -2,29 +2,30 @@
 
 本文件记录跨会话的现状、决定与待办。新会话先读这里，再读 `AGENTS.md` §10 / §10.7。
 
-## 当前状态（2026-11-05 23:35）
+## 当前状态（2026-11-06 00:20）
 
 | 项 | 值 |
 | --- | --- |
-| 生产版本 | `v1.7.3.14`，无回滚，五个服务健康，磁盘 39% |
-| 仓库 | `origin/main` = 本地 `main` |
-| 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里，已切到 `main` |
+| 生产版本 | `v1.7.3.14`；`v1.8.0` 已发布，等待后台升级 |
+| 仓库 | `origin/main` = 本地 `main` = `6da13ea2`，tag `v1.8.0` |
+| 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里 |
 | 未完成功能 | `codex/wip-password-registration`（免验证码注册，勿合入 main） |
-| 上游 | 领先 origin/main 13 个提交（截至 23:00），作者预告今晚还有约 20 个提交 |
+| 上游 | 已同步到作者 `v1.8.0`（33 个提交、458 个文件） |
 
-## 今晚完成（v1.7.3.13 → v1.7.3.14）
+## v1.8.0 合并记录（2026-11-06 00:00）
 
-1. 更新器新增备份保留（默认 3 份）与旧镜像回收，环境变量 `CANVAS_UPDATER_BACKUP_RETENTION` / `CANVAS_UPDATER_PRUNE_IMAGES`。
-2. 更新器选版过滤 draft 与 prerelease。
-3. CI tag 轮复用同提交镜像：发版从「main 6m37s + tag 10min+」降到「6m37s + 2m58s」。
-4. 新增 `scripts/cut-release.mjs`：一次完成 VERSION/CHANGELOG/tag，已备好版本时只补 tag。
-5. 本地验证 `backend:test-rest` 加 `-p 1`，修掉共享 Postgres 下的假失败。
-6. 合入 GPT 的计费修复（`2beba18c`）与验证脚本 Windows 兼容修复（`632ecbf8`）。
-7. 支付插件 1.0.5：渠道名改「使用支付宝支付 / 使用微信支付」，图标改宿主品牌键 `brand:alipay` / `brand:wechat-pay`。
+- 上游范围：`878b515b..2fe3ca13`，33 个提交、458 个文件；Schema **82 → 87**。
+- 6 个冲突：`VERSION`、`CHANGELOG.md`、`agent-runtime.mjs`、`cloud_agent_pi_coordinator.go`、`cloud_agent_pi_model.go`、`drama.ts`。
+- **真实回归**：上游新增的「步骤预算耗尽」拦截插在「认领孤儿任务」之前，会让中断恢复直接失败；
+  由二开测试 `TestCloudAgentModelStepAdoptsOrphanedTask` 抓到，删除重复拦截后修复（`6da13ea2`）。
+- 迁移演练：空库 0→87 通过；增量 82→87 通过（`migrate-schema verify` 返回 `ready=true`）。
+- 前端新增依赖 `react-i18next` / `i18next`，需 `bun install`。
+- Release 侧：`gh release create` 转正式时 GitHub 返回 500（瞬时故障），改为 API 重建 Release 并上传四个附件；
+  附件哈希与本地构建一致。
 
 ## 下次升级要盯
 
-v1.7.3.14 首次把**新更新器**装到服务器，所以保留策略要到**下一次升级**才生效。下次升级后应看到：
+v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
 - 更新日志出现「已清理旧备份：…」；
 - `df -h` 不再每版掉约 1.4GB。
 
