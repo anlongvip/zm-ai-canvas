@@ -14,7 +14,7 @@ import (
 )
 
 // Internal admission constraints are not JSON fields. Callers cannot select a
-// task ID or bypass the quoted-charge ceiling through the public tasks API.
+// task ID or bypass the Agent charge ceiling through the public tasks API.
 type taskAdmission struct {
 	ID           string
 	MaxCharge    int64
@@ -22,6 +22,24 @@ type taskAdmission struct {
 	GenerationID string
 	ApprovalID   string
 	NonBillable  bool
+}
+
+// Agent 的 RunningHub 视频报价按请求时长预授权，但最终用户费用按上游
+// taskCostTime 结算。两者可能相差很大，因此不能把报价本身当成结算硬上限；
+// 本轮剩余预算才是这类任务允许使用的最高金额。
+func agentChargeLimitMicrocredits(order *model.BillingOrder, admission *taskAdmission, input map[string]any) int64 {
+	if order == nil {
+		return 0
+	}
+	limit := order.AmountMicrocredits
+	if admission == nil || admission.MaxCharge <= limit || order.Capability != "video" || order.BillingMode != "per_second" {
+		return limit
+	}
+	config, _ := input["config"].(map[string]any)
+	if strings.TrimSpace(fmt.Sprint(config["interfaceType"])) != string(model.ChannelInterfaceRunningHubVideo) {
+		return limit
+	}
+	return admission.MaxCharge
 }
 
 var errTaskAdmissionDraining = errors.New("task admission paused for maintenance")
@@ -220,9 +238,10 @@ func (s *Service) CreateTask(userID string, req CreateTaskRequest) (*model.Task,
 		}
 		switch billingOrder.BillingMode {
 		case "fixed_request", "per_second", "token":
+			chargeLimit := agentChargeLimitMicrocredits(billingOrder, req.admission, normalizedInput)
 			billingOrder.ChargeLimitSet = true
-			billingOrder.ChargeLimitMicrocredits = billingOrder.AmountMicrocredits
-			task.AuthorizedChargeMicrocredits = billingOrder.AmountMicrocredits
+			billingOrder.ChargeLimitMicrocredits = chargeLimit
+			task.AuthorizedChargeMicrocredits = chargeLimit
 		default:
 			return nil, BadAuthRequest("Agent 暂不支持当前模型计费方式")
 		}

@@ -27,6 +27,32 @@ func TestAgentMediaAdmissionPersistsOriginAndChargeAuthorization(t *testing.T) {
 	}
 }
 
+func TestAgentRunningHubVideoUsesRemainingBudgetAsChargeLimit(t *testing.T) {
+	order := &model.BillingOrder{AmountMicrocredits: 25_000, Capability: "video", BillingMode: "per_second"}
+	admission := &taskAdmission{MaxCharge: 200_000_000}
+	input := map[string]any{"config": map[string]any{"interfaceType": string(model.ChannelInterfaceRunningHubVideo)}}
+	if got := agentChargeLimitMicrocredits(order, admission, input); got != admission.MaxCharge {
+		t.Fatalf("RunningHub Agent video charge limit = %d, want remaining budget %d", got, admission.MaxCharge)
+	}
+	if got := agentChargeLimitMicrocredits(order, admission, map[string]any{"config": map[string]any{"interfaceType": "volcengine-ark-video"}}); got != order.AmountMicrocredits {
+		t.Fatalf("non-RunningHub Agent video charge limit = %d, want quote %d", got, order.AmountMicrocredits)
+	}
+}
+
+func TestCloudAgentBudgetUsesSettledActualCharge(t *testing.T) {
+	orders := []model.BillingOrder{
+		{Status: model.BillingStatusSettled, AmountMicrocredits: 25_000, ActualAmountMicrocredits: 540_000},
+		{Status: model.BillingStatusReserved, AmountMicrocredits: 25_000, ChargeLimitSet: true, ChargeLimitMicrocredits: 200_000_000},
+	}
+	used := int64(0)
+	for _, order := range orders {
+		used += cloudAgentOrderBudgetUsage(order)
+	}
+	if used != 200_540_000 {
+		t.Fatalf("Agent budget usage = %d, want settled actual plus active authorization 200540000", used)
+	}
+}
+
 func TestAgentMediaRetryRequiresNewGenerationAuthorization(t *testing.T) {
 	s, db, _ := agentMediaFixture(t)
 	for _, task := range []model.Task{
