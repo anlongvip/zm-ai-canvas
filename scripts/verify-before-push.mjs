@@ -151,7 +151,9 @@ if (wantBackend) {
     } else notCovered.push("Agent 静态检查 golangci-lint v2.5.0（本机未安装；Agent 架构测试已包含在 backend:test-rest）");
     const appPackage = "yingce/backend/internal/app";
     const otherPackages = lines(spawnSync("go", ["list", "./..."], { cwd: BACKEND, encoding: "utf8" }).stdout).filter((pkg) => pkg !== appPackage);
-    tasks.push({ name: "backend:test-rest", cwd: BACKEND, cmd: "go", args: ["test", "-timeout=20m", ...otherPackages], weight: 100 });
+    // rest 分片串行跑包：本地与 CI 共用同一个 Postgres 测试库，并发跑包会让
+    // 索引/表结构的断言互相踩（TestCanvasAgentActivityIndexed/postgres/pi-history-indexes）。
+    tasks.push({ name: "backend:test-rest", cwd: BACKEND, cmd: "go", args: ["test", "-p", "1", "-timeout=20m", ...otherPackages], weight: 100 });
     // 与 CI 相同：internal/app 的顶层用例按名字排序后轮转分片，子用例跟随顶层用例。
     tasks.push({ name: "backend:list-app", cwd: BACKEND, cmd: "go", args: ["test", "-list", ".", "./internal/app"], weight: 200 });
     for (let shard = 1; shard <= options.appShards; shard++) {
