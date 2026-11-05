@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -42,6 +43,9 @@ func run(ctx context.Context) error {
 		BinaryPath:   env("CANVAS_UPDATER_BINARY_PATH", "/usr/local/bin/open-ai-canvas-host-updater"),
 		ServiceName:  env("CANVAS_UPDATER_SERVICE_NAME", "open-ai-canvas-updater.service"),
 		SelfUpdate:   envBool("CANVAS_UPDATER_SELF_UPDATE", true),
+		// 每次升级都会生成全量 ZIP；保留 3 份可覆盖当前版本与回退版本。
+		BackupRetention: envInt("CANVAS_UPDATER_BACKUP_RETENTION", 3),
+		PruneImages:     envBool("CANVAS_UPDATER_PRUNE_IMAGES", true),
 	})
 	if err != nil {
 		return err
@@ -111,6 +115,18 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 	parsed, err := time.ParseDuration(value)
 	if err != nil || parsed <= 0 {
 		log.Fatalf("%s 必须是正数时长", key)
+	}
+	return parsed
+}
+
+func envInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 {
+		log.Fatalf("%s 必须是正整数", key)
 	}
 	return parsed
 }

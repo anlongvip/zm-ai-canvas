@@ -58,18 +58,32 @@ func (m *Manager) latestRelease(ctx context.Context) (*Release, error) {
 	if err := decoder.Decode(&releases); err != nil {
 		return nil, fmt.Errorf("解析 GitHub Release：%w", err)
 	}
+	filtered, err := selectLatestRelease(releases)
+	if err != nil {
+		return nil, err
+	}
+	latest := filtered
+	return &Release{Version: latest.TagName, Name: latest.Name, Body: latest.Body, URL: latest.HTMLURL, PublishedAt: latest.PublishedAt, Prerelease: latest.Prerelease}, nil
+}
+
+// selectLatestRelease 只接受已发布的正式版本：draft 与 prerelease 都不能推给生产，
+// 否则一个版本号更高的 rc 会被当成正式更新。
+func selectLatestRelease(releases []githubRelease) (*githubRelease, error) {
 	filtered := make([]githubRelease, 0, len(releases))
 	for _, release := range releases {
-		if !release.Draft && strings.HasPrefix(release.TagName, "v") {
-			filtered = append(filtered, release)
+		if release.Draft || release.Prerelease {
+			continue
 		}
+		if !strings.HasPrefix(release.TagName, "v") {
+			continue
+		}
+		filtered = append(filtered, release)
 	}
 	if len(filtered) == 0 {
-		return nil, errors.New("GitHub 尚未发布可用 Release")
+		return nil, errors.New("GitHub 尚未发布可用的正式 Release")
 	}
 	sort.SliceStable(filtered, func(i, j int) bool { return CompareVersions(filtered[i].TagName, filtered[j].TagName) > 0 })
-	latest := filtered[0]
-	return &Release{Version: latest.TagName, Name: latest.Name, Body: latest.Body, URL: latest.HTMLURL, PublishedAt: latest.PublishedAt, Prerelease: latest.Prerelease}, nil
+	return &filtered[0], nil
 }
 
 func (m *Manager) currentVersion() (string, error) {

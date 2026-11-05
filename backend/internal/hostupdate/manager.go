@@ -35,6 +35,10 @@ type Config struct {
 	BinaryPath   string
 	ServiceName  string
 	SelfUpdate   bool
+	// BackupRetention 是升级成功后保留的备份份数，最少 1 份。
+	BackupRetention int
+	// PruneImages 控制是否在升级成功后删除更早版本的业务镜像标签。
+	PruneImages bool
 }
 
 type commandRunner interface {
@@ -100,6 +104,9 @@ func NewManager(config Config) (*Manager, error) {
 	}
 	if config.BackupDir == "" {
 		config.BackupDir = filepath.Join(config.InstallDir, "backups")
+	}
+	if config.BackupRetention <= 0 {
+		config.BackupRetention = defaultBackupRetention
 	}
 	if config.StableWindow <= 0 {
 		config.StableWindow = 30 * time.Second
@@ -352,6 +359,8 @@ func (m *Manager) runUpdate(fromVersion, targetVersion string) {
 	}
 	_ = m.saveStateLocked()
 	m.mu.Unlock()
+	// 升级成功后再清理旧备份与旧镜像；失败不影响已完成的升级结果。
+	m.pruneRetainedArtifacts(targetVersion, fromVersion)
 	if updaterBinary != "" && m.config.ServiceName != "" {
 		go m.restartSelf()
 	}
