@@ -23,19 +23,21 @@ Go、Bun、Node 和 golangci-lint 下载包已核对官方 SHA256。前端使用
 
 ## 运行方法
 
-本机提供 Git 忽略的 `.local/verify-linux.ps1`。先提交要验证的改动，然后在仓库根目录执行：
+仓库自带 `scripts/verify-linux.ps1`（已纳入版本管理）。先提交要验证的改动，然后在仓库根目录执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .local/verify-linux.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-linux.ps1
 ```
 
-入口会先 fetch，拒绝脏工作区或落后远端的分支，再将当前提交快进同步到 Linux 副本。它启动独立 PostgreSQL 测试服务，加载固定工具链，并执行仓库的默认范围检查：
+脚本按当前提交打包成临时 bundle，在 `/opt/canvas-ci/verify/<commit>` 创建独立副本（符号链接复用已装好的 node_modules），不污染长期仓库，也不受 Windows 换行影响。
 
 ```bash
 source /opt/canvas-ci/env.sh
-cd /opt/canvas-ci/repo
+cd /opt/canvas-ci/verify/<commit>
 bun scripts/verify-before-push.mjs --jobs 4
 ```
+
+手动在副本里复跑时使用上面这组命令；`backend:test-rest` 已固定 `-p 1` 串行跑包，避免共享 Postgres 测试库的并发竞争。
 
 Linux 副本和工具位于 `/opt/canvas-ci/`；环境变量只指向本地测试库。总日志回传 Windows 的 `.local/cache/linux-verify.log`，各项明细保存在 Linux 副本 `.local/cache/verify/`。
 
