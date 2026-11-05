@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$Distro = "zm-ai-canvas-ci",
     [int]$Jobs = 4
 )
@@ -24,6 +24,8 @@ $bash = @"
 set -euo pipefail
 source /opt/canvas-ci/env.sh
 root=/opt/canvas-ci/verify/$head
+# 只保留最近一份历史副本：每份约 1 GB，长期累积会把 WSL 磁盘撑大。
+ls -1dt /opt/canvas-ci/verify/*/ 2>/dev/null | tail -n +2 | xargs -r rm -rf || true
 rm -rf "`$root"
 git init -q "`$root"
 git -C "`$root" config core.autocrlf false
