@@ -176,37 +176,47 @@ function main() {
     }
 
     const currentVersion = readFileSync(VERSION_FILE, "utf8").trim();
-    const entry = buildEntry(version, baseTag);
-    const changelog = readFileSync(CHANGELOG_FILE, "utf8");
+    // Windows 检出是 CRLF，比较和插入统一按 LF 处理，写回时再还原原有换行。
+    const rawChangelog = readFileSync(CHANGELOG_FILE, "utf8");
+    const eol = rawChangelog.includes("\r\n") ? "\r\n" : "\n";
+    const changelog = rawChangelog.split("\r\n").join("\n");
     if (!changelog.startsWith("# CHANGELOG")) fail("CHANGELOG.md 必须以 # CHANGELOG 开头");
-    const marker = changelog.indexOf("\n");
-    const updated = `${changelog.slice(0, marker + 1)}\n${entry}\n\n${changelog.slice(marker + 1)}`;
+    // 代理或人工可能已经把 VERSION 与 CHANGELOG 写好并提交，这时只需补一个 tag，避免重复条目。
+    const prepared = currentVersion === version && changelog.includes(`\n## ${version}\n`);
 
     console.log(`上一个版本：${baseTag}`);
     console.log(`当前 VERSION：${currentVersion}`);
     console.log(`本次版本：${version}`);
     console.log(`基线分支：${head}${options.dryRun ? "（dry-run，不写入）" : ""}`);
     console.log("");
-    console.log(entry);
-    console.log("");
+    if (prepared) {
+        console.log(`VERSION 与 CHANGELOG 已经是 ${version}，跳过改写，直接打 tag。`);
+    } else {
+        const entry = buildEntry(version, baseTag);
+        const marker = changelog.indexOf("\n");
+        console.log(entry);
+        console.log("");
+        if (!options.dryRun) {
+            const inserted = `${changelog.slice(0, marker + 1)}\n${entry}\n\n${changelog.slice(marker + 1)}`;
+            writeFileSync(VERSION_FILE, `${version}\n`, "utf8");
+            writeFileSync(CHANGELOG_FILE, inserted.replace(/\n/g, eol), "utf8");
+            const writtenVersion = readFileSync(VERSION_FILE, "utf8").trim();
+            if (writtenVersion !== version) fail(`VERSION 写入后为 ${writtenVersion}，与 ${version} 不一致`);
+            if (!readFileSync(CHANGELOG_FILE, "utf8").split("\r\n").join("\n").includes(`\n## ${version}\n`)) {
+                fail(`CHANGELOG 未包含 ## ${version} 段落`);
+            }
+            git(["add", "VERSION", "CHANGELOG.md"]);
+            git(["commit", "-m", `chore(release): 版本发布 - ${version}`]);
+        }
+    }
 
     if (options.dryRun) {
-        console.log("dry-run：未修改 VERSION、CHANGELOG，未提交、未打 tag。");
+        console.log("dry-run：未修改文件、未提交、未打 tag。");
         return;
     }
 
-    writeFileSync(VERSION_FILE, `${version}\n`, "utf8");
-    writeFileSync(CHANGELOG_FILE, updated, "utf8");
-    const writtenVersion = readFileSync(VERSION_FILE, "utf8").trim();
-    if (writtenVersion !== version) fail(`VERSION 写入后为 ${writtenVersion}，与 ${version} 不一致`);
-    if (!readFileSync(CHANGELOG_FILE, "utf8").includes(`\n## ${version}\n`)) {
-        fail(`CHANGELOG 未包含 ## ${version} 段落`);
-    }
-
-    git(["add", "VERSION", "CHANGELOG.md"]);
-    git(["commit", "-m", `chore(release): 版本发布 - ${version}`]);
     git(["tag", "-a", version, "-m", `影策 ${version}`]);
-    console.log(`已提交并打 tag：${version}`);
+    console.log(`已打 tag：${version}`);
 
     if (options.push) {
         git(["push", "origin", "HEAD"]);
