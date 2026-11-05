@@ -2,14 +2,14 @@
 
 本文件记录跨会话的现状、决定与待办。新会话先读这里，再读 `AGENTS.md` §10 / §10.7。
 
-## 当前状态（2026-11-05 23:20）
+## 当前状态（2026-11-05 23:35）
 
 | 项 | 值 |
 | --- | --- |
 | 生产版本 | `v1.7.3.14`，无回滚，五个服务健康，磁盘 39% |
-| 仓库 | `origin/main` = 本地 `main` = 含 §10.7 的提交 |
-| 发版工作区 | `E:\canvas-release`（干净 `main` 检出） |
-| 主工作区 | `E:\zm-ai-canvas`（旧分支，有用户未提交改动，**不要动**） |
+| 仓库 | `origin/main` = 本地 `main` |
+| 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里，已切到 `main` |
+| 未完成功能 | `codex/wip-password-registration`（免验证码注册，勿合入 main） |
 | 上游 | 领先 origin/main 13 个提交（截至 23:00），作者预告今晚还有约 20 个提交 |
 
 ## 今晚完成（v1.7.3.13 → v1.7.3.14）
@@ -36,18 +36,16 @@ v1.7.3.14 首次把**新更新器**装到服务器，所以保留策略要到**�
 | --- | --- | --- |
 | 验证报 `UNIQUE constraint failed: user_oss_settings.id` | 测试第 66 行**故意**制造重复插入 | 噪音，不是失败 |
 | `backend:test-rest` 偶发失败（索引断言） | 多包并发共用同一 Postgres 测试库 | 已加 `-p 1`；若 CI 红了先重跑确认 |
-| PowerShell 跑 `.local/*.ps1` 报 ParserError | 脚本是无 BOM 的 UTF-8，PS 5.1 按 ANSI 读 | 存成带 BOM 的 UTF-8 |
-| `pack.py` 报 `Unexpected UTF-8 BOM` | 同上，反向问题 | JSON 要无 BOM |
-| `E:\zm-ai-canvas` 的 AGENTS.md 是旧版 | 该工作区停在旧分支 | 新会话一律用 `E:\canvas-release` |
+| PowerShell 跑 `*.ps1` 报 ParserError | 脚本是无 BOM 的 UTF-8，PS 5.1 按 ANSI 读 | 存成带 BOM 的 UTF-8（`scripts/verify-linux.ps1` 已是 BOM） |
+| `pack.py` 报 `Unexpected UTF-8 BOM` | 同上，反向问题 | JSON 写无 BOM 的 UTF-8 |
 | 插件渠道图标显示灰底 PAY | 清单 icon 写的是包内路径，宿主只认 `brand:*` | manifest 用品牌键 |
 
 ## 待办（都不紧急）
 
-1. 上游那批更新推完后：merge → `bun scripts/verify-before-push.mjs --jobs 4` → `cut-release` → 后台更新。
-2. 把 `.local/verify-linux.ps1` 的改造搬进 `scripts/verify-linux.ps1`（`.local/` 不进 git，换 worktree 就丢）。
-3. 清理旧 Codex worktree：`8d78`、`release-v1.7.3.10`；`release-v1-7-3-12` 先留着（存有上面那份 `.local` 脚本）。
-4. 主工作区那 9 个未提交改动的处置（提交到分支或丢弃），决定后可以把主工作区切到 `main`、删掉 `E:\canvas-release`。
-5. 若要真正的"挂机"：GitHub Actions 定时做上游预检与开 PR，而不是让代理点鼠标。
+1. 上游那批更新推完后：merge → `scripts/verify-linux.ps1` → `cut-release` → 后台更新。
+2. `codex/wip-password-registration` 那支免验证码注册还没做完，也没验证过；要么继续，要么丢弃。
+3. 若要真正的"挂机"：GitHub Actions 定时做上游预检与开 PR，而不是让代理点鼠标。
+4. 插件 1.0.5 已打包，等待上传后台并重存两个渠道配置（文案：使用支付宝支付 / 使用微信支付）。
 
 ## 约定
 

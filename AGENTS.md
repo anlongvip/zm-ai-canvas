@@ -247,19 +247,20 @@ cd web && bun run dev
 本仓库的同步与发版默认由代理执行，用户负责生产动作的最终确认。
 
 **工作目录**
-- 主工作区 `E:\zm-ai-canvas`：用户编辑入口，可能长期存在未提交改动；不要 stash、不要 checkout 覆盖、不要提交它们。
-- 发版工作区 `E:\canvas-release`：干净的 `main` 检出，专门用于验证与 `cut-release`。
-- 历史 Codex worktree 视为只读参考，不要在其中开发，也不要删除（可能存有未落库的 `.local/` 脚本）。
+- 仓库根目录 `E:\zm-ai-canvas` 是**唯一工作区**，也是 `.git` 所在处；不要删除或移动它。
+- 默认在 `main` 上工作。发版要求工作区干净；若存在用户未提交改动，新建临时 worktree 发版（`git worktree add <临时目录> main`），完成后删除，不要 stash 用户改动。
+- 未完成的功能放在独立 `codex/wip-*` 分支，不合并进 `main`。
+- 不要为同一仓库再建长期并行的 worktree；历史 Codex worktree 已清理。
 
 **每次开工先核对并报告**：`git log --oneline origin/main..main`、`git status --short`、`git worktree list`；核对完再动手，不要凭上次记忆。
 
 **每次发版的固定动作**
-1. 同步：merge 上游 → 只处理双方都改过的文件 → 跑 `bun scripts/verify-before-push.mjs --jobs 4`（Linux 入口）。
+1. 同步：merge 上游 → 只处理双方都改过的文件 → 跑 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-linux.ps1`（Linux 验证入口，约 3 分钟）。
 2. 推送 `main`，等 CI 全绿。
-3. 在 `E:\canvas-release` 跑 `bun scripts/cut-release.mjs --dry-run`，把版本号与条目报给用户；`--push` 前需用户确认。
+3. 在干净的 `main` 上跑 `bun scripts/cut-release.mjs --dry-run`，把版本号与条目报给用户；`--push` 前需用户确认。
 4. 确认 tag 轮 `Build` 为 skipped（复用镜像）。
 5. 用户在生产后台点更新；代理提供核对清单并判读结果。
-6. 记录：版本、提交、三镜像 digest、Schema、耗时、未覆盖项。
+6. 记录：版本、提交、三镜像 digest、Schema、耗时、未覆盖项，写入 `docs/plans/ops-log.md`。
 
 **边界**
 - 生产操作（后台「开始更新」、回滚、改服务器配置、执行 `docker` / `systemctl`）由用户执行或明确授权；代理不自行触发。
