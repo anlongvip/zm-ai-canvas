@@ -40,6 +40,16 @@ func cloudAgentMediaCall(call cloudAgentCall) cloudAgentCall {
 	return call
 }
 
+func cloudAgentOrderBudgetUsage(order model.BillingOrder) int64 {
+	if order.Status == model.BillingStatusSettled {
+		return order.ActualAmountMicrocredits
+	}
+	if order.ChargeLimitSet && order.ChargeLimitMicrocredits > order.AmountMicrocredits {
+		return order.ChargeLimitMicrocredits
+	}
+	return order.AmountMicrocredits
+}
+
 func (s *Service) enqueueCloudAgentTask(run *model.CloudAgentExecution, state *cloudAgentRuntime, req CreateTaskRequest, media *cloudAgentMediaPlan) error {
 	orders, err := s.repo.BillingOrdersByTaskIDs(run.UserID, state.TaskIDs)
 	if err != nil {
@@ -47,7 +57,7 @@ func (s *Service) enqueueCloudAgentTask(run *model.CloudAgentExecution, state *c
 	}
 	remaining := int64(math.Floor(state.Request.Budget.MaxCredits * float64(CreditScale)))
 	for _, order := range orders {
-		remaining -= order.AmountMicrocredits
+		remaining -= cloudAgentOrderBudgetUsage(order)
 	}
 	if remaining < 0 {
 		return s.failCloudAgent(run, state, "Agent 累计预算已耗尽")

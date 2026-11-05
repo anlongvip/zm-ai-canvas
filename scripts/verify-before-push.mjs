@@ -129,14 +129,23 @@ if (wantBackend) {
         console.error("✗ 有后端改动，但本机没有可用的 go；请安装 backend/go.mod 要求的 Go 版本。");
         process.exit(1);
     }
-    tasks.push({
-        name: "backend:gofmt",
-        cwd: BACKEND,
-        cmd: "gofmt",
-        args: ["-l", "."],
-        weight: 5,
-        check: (output) => (output.trim() ? `以下文件需要 gofmt -w：\n${output.trim()}` : ""),
-    });
+    // Windows Git core.autocrlf may convert Go files to CRLF, which gofmt
+    // reports as formatting changes even when the committed LF blob is clean.
+    // Check only Go files changed from the base; CI remains the full-tree gate.
+    const changedGoFiles = changed.filter((file) => file.startsWith("backend/") && file.endsWith(".go"));
+    if (changedGoFiles.length) {
+        const gofmtArgs = process.platform === "win32"
+            ? ["-l", ...changedGoFiles.map((file) => path.resolve(ROOT, file))]
+            : ["-l", ...changedGoFiles.map((file) => path.relative(BACKEND, path.resolve(ROOT, file)))];
+        tasks.push({
+            name: "backend:gofmt",
+            cwd: BACKEND,
+            cmd: "gofmt",
+            args: gofmtArgs,
+            weight: 5,
+            check: (output) => (output.trim() ? `以下改动文件需要 gofmt -w：\n${output.trim()}` : ""),
+        });
+    }
     if (spawnSync("golangci-lint", ["--version"], { encoding: "utf8" }).status === 0) {
         tasks.push({ name: "backend:agent-lint", cwd: BACKEND, cmd: "golangci-lint", args: ["run", "--config=.golangci.yml", "./internal/agent/..."], weight: 60 });
     } else notCovered.push("Agent 静态检查 golangci-lint v2.5.0（本机未安装；Agent 架构测试已包含在 backend:test-rest）");
@@ -214,7 +223,7 @@ function runTask(task) {
         let output = "";
         const startedAt = Date.now();
         // 独立进程组：超时或中断时能结束 vite、chrome、go 子进程。
-        const child = spawn(task.cmd, args, { cwd: task.cwd, env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", ...task.env }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+        const child = spawn(task.cmd, args, { cwd: task.cwd, env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", ...task.env }, detached: true, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
         running.set(task.name, child);
         const collect = (chunk) => {
             output += chunk;
