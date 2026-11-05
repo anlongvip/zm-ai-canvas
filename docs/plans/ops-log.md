@@ -18,7 +18,9 @@
 - 备份：`backup-20261105-162148`，431.76 MB，来源 `v1.7.3.14`。
 - **保留策略首次生效**：升级日志出现「已清理旧备份：backup-20261104-113440.zip」。
   说明 v1.7.3.14 装的更新器已含 `retention.go`，无需再等一轮。
-- 待确认：Schema 计数是否显示 87/87（更新器健康校验已通过，但未截图核对）。
+- 迁移确认：`select max(version) from schema_migrations` 返回 **87**；
+  `docker compose run --rm migrate verify` 返回 `{"current":87,"expected":87,"ready":true}`。
+- 启动日志无 panic / 5xx；v1.8.0 新增的灵感大厅同步已运行（`inspiration feed synced created=311`）。
 
 ## v1.8.0 合并记录（2026-11-06 00:00）
 
