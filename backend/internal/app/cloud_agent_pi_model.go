@@ -218,12 +218,6 @@ func (s *Service) runCloudAgentModelStep(ctx context.Context, userID, runID stri
 		if cloudAgentMediaBatchActive(&state) {
 			return nil, false, errCloudAgentAwaitingApproval
 		}
-		if cloudAgentStepBudgetExhausted(&state) {
-			// 最终回答之后的插话续步会在这里撞上限；若确实停在最终回答边界，
-			// 按完成收尾而不是把整轮判失败（见 settleCloudAgentPiFinalAnswer）。
-			s.settleCloudAgentPiFinalAnswer(userID, runID)
-			return nil, false, fmt.Errorf("step budget exhausted")
-		}
 		if state.StepLimits, err = s.cloudAgentStepLimits(); err != nil {
 			return nil, false, err
 		}
