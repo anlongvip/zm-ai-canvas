@@ -1,3 +1,4 @@
+﻿# 本文件必须保存为 UTF-8 带 BOM：Windows PowerShell 5.1 会按 ANSI 读取无 BOM 的脚本，中文会变成语法错误。
 param(
     [string]$Distro = "zm-ai-canvas-ci",
     [int]$Jobs = 4
