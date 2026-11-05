@@ -55,13 +55,15 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
 
 1. 上游那批更新推完后：merge → `scripts/verify-linux.ps1` → `cut-release` → 后台更新。
 2. 若要真正的"挂机"：GitHub Actions 定时做上游预检与开 PR，而不是让代理点鼠标。
-3. 剩余的 `codex/runninghub-*` 两支是早期分支，未合入 main，确认无用后可删。
 
 已完成：
 - 插件 1.0.5 已上传并在钱包页确认——品牌图标正常，文案为「使用支付宝支付 / 使用微信支付」。
 - **免验证码注册无需二开**：上游 v1.8.0 已实现（`verification_policy.go` 的 `PasswordRegistration`
   与同名校验、后台开关、注册页改造，本地 WIP 分支与其实现一致），`codex/wip-password-registration` 已删除。
   对应的 `web/test/drama-episode-normalize.test.ts` 上游也已提供（提交 `918063f7`）。
+- **分支收敛完毕**：仓库只剩 `main`。`codex/runninghub-video-phase1` 的目录特判已在 main，
+  `codex/runninghub-phase1-complete` 的只读审计 SQL 已收编为 `scripts/audit-runninghub-billing.sql`，
+  其余过期文档未保留。
 
 ## 变更记录
 
