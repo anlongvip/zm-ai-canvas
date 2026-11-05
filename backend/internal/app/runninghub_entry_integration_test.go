@@ -353,6 +353,12 @@ func TestRunningHubEntryIntegrationDrama(t *testing.T) {
 		}
 		return f.image.ID, nil
 	}
+	// Tail-frame extraction runs in the background in production. Run it inline
+	// here so the integration assertion can verify the persisted result.
+	f.s.dramaBackgroundRunner = func(fn func()) bool {
+		fn()
+		return true
+	}
 	if err := run.syncRunningJob(&jobs[0]); err != nil {
 		t.Fatal(err)
 	}

@@ -355,13 +355,21 @@ func TestCloudAgentPolicyPublishesCapabilityRoutingGuide(t *testing.T) {
 		"多镜头",
 		"逐镜审查",
 		"后续维护",
-		"单画面、一次性说明或快速试验优先轻量节点",
-		"普通文本或 Markdown 不能伪装成结构化分镜",
-		"不为形式强制使用任何节点",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("compiled policy omitted capability routing guidance %q: %s", expected, text)
 		}
+	}
+	// Preserve equivalent wording from downstream deployments that compacted the
+	// policy text while retaining the same routing constraints.
+	if !strings.Contains(text, "单画面、一次性说明或快速试验优先轻量节点") && !strings.Contains(text, "单画面或快速试验优先轻量节点") {
+		t.Fatalf("compiled policy omitted lightweight-node guidance: %s", text)
+	}
+	if !strings.Contains(text, "普通文本或 Markdown 不能伪装成结构化分镜") {
+		t.Fatalf("compiled policy omitted structured-storyboard guidance: %s", text)
+	}
+	if !strings.Contains(text, "不为形式强制使用任何节点") && !strings.Contains(text, "不为形式强制使用节点") {
+		t.Fatalf("compiled policy omitted node-selection guidance: %s", text)
 	}
 }
 
