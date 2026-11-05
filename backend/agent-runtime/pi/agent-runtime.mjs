@@ -164,6 +164,14 @@ async function run() {
             thinkingLevel: options?.reasoning ?? "off",
             contextUsage: session.getContextUsage(),
           }, options?.signal);
+          if (result.pause === true && result.reason === "awaiting_approval") {
+            pausedForApproval = true;
+            emit("approval_wait", { reason: result.reason });
+            stream.push({ type: "error", reason: "aborted", error: { ...partial, stopReason: "aborted", errorMessage: "paused for approval" } });
+            stream.end();
+            return;
+          }
+          // 审批等待之外的 pause 仍按停服/维护处理，两条分支互不覆盖。
           if (result.pause) {
             pausedForMaintenance = true;
             stream.push({ type: "error", reason: "aborted", error: { ...partial, stopReason: "aborted", errorMessage: "paused for maintenance" } });
