@@ -3,9 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
-
 	"gorm.io/gorm"
-
 	"yingce/backend/internal/kernel"
 	"yingce/backend/internal/model"
 )
@@ -13,7 +11,6 @@ import (
 const authPolicyKey = "auth_verification_policy"
 
 type VerificationPolicy struct {
-	PasswordRegistration    bool `json:"passwordRegistration"`
 	SMSLogin                bool `json:"smsLogin"`
 	EmailLogin              bool `json:"emailLogin"`
 	SMSRegistration         bool `json:"smsRegistration"`
@@ -45,9 +42,6 @@ func (s *Service) AdminVerificationPolicy(actor *model.User) (*VerificationPolic
 func (s *Service) UpdateVerificationPolicy(actor *model.User, p VerificationPolicy) (*VerificationPolicy, error) {
 	if err := s.host.RequireAdmin(actor); err != nil {
 		return nil, err
-	}
-	if p.PasswordRegistration && (p.SMSRegistration || p.EmailRegistration || p.SMSAndEmailRegistration) {
-		return nil, kernel.BadAuthRequest("免验证码注册不能与验证码注册同时开启")
 	}
 	if p.SMSAndEmailRegistration && (p.SMSRegistration || p.EmailRegistration) {
 		return nil, kernel.BadAuthRequest("短信+邮箱同时验证不能与单一验证注册同时开启")
@@ -101,3 +95,33 @@ func (p VerificationPolicy) allows(purpose, method string) bool {
 	return false
 }
 func (p VerificationPolicy) hash() string { raw, _ := json.Marshal(p); return HashToken(string(raw)) }
+
+// availableRegistrationMethods 返回策略开启且发送能力就绪的注册验证方式，与公开设置的过滤口径一致。
+func (s *Service) availableRegistrationMethods() ([]string, error) {
+	p, err := s.verificationPolicy()
+	if err != nil {
+		return nil, err
+	}
+	emailEnabled, err := s.EmailEnabled()
+	if err != nil {
+		return nil, err
+	}
+	smsEnabled, err := s.smsAvailable("register")
+	if err != nil {
+		return nil, err
+	}
+	if p.SMSAndEmailRegistration {
+		if smsEnabled && emailEnabled {
+			return []string{"sms_email"}, nil
+		}
+		return nil, nil
+	}
+	methods := []string{}
+	if p.SMSRegistration && smsEnabled {
+		methods = append(methods, "sms")
+	}
+	if p.EmailRegistration && emailEnabled {
+		methods = append(methods, "email")
+	}
+	return methods, nil
+}

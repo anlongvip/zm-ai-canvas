@@ -1,6 +1,6 @@
 import { App, Button, Form, Input, Skeleton } from "antd";
 import { Switch } from "@/pages/admin/ui/controls";
-import { AlertTriangle, AppWindow, BadgeCheck, Check, ChevronDown, FileText, Globe2, KeyRound, LockKeyhole, PanelsTopLeft, RefreshCw, RotateCcw, Save, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
+import { AlertTriangle, AppWindow, BadgeCheck, Check, ChevronDown, FileText, Globe2, KeyRound, LockKeyhole, Mail, MailCheck, PanelsTopLeft, RefreshCw, RotateCcw, Save, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useBlocker } from "react-router";
 
@@ -11,7 +11,6 @@ import type { AuthLoginMode } from "@/services/api/auth";
 import { useAuthSettingsStore } from "@/stores/use-auth-settings-store";
 import { AdminStatusBadge, configuredSecretText, SettingsSectionCard } from "./admin-ui";
 import { Select } from "@/components/ui/base/select";
-import { getVerificationPolicy, saveVerificationPolicy, type VerificationPolicy } from "@/services/api/verification";
 
 const LOGIN_MODES: Array<{ mode: AuthLoginMode; label: string; description: string; short: string }> = [
     { mode: "modal", label: "弹窗登录（默认）", description: "在当前页面弹出登录框，登录后留在原页面继续操作；直达 /login 的链接也会改为弹窗。", short: "左侧品牌介绍 + 右侧登录表单" },
@@ -47,10 +46,9 @@ export default function AccessSettingsPanel() {
     const [refreshing, setRefreshing] = useState(false);
     const [savingLinuxDO, setSavingLinuxDO] = useState(false);
     const [savingRegistration, setSavingRegistration] = useState(false);
-    const [policy, setPolicy] = useState<VerificationPolicy | null>(null);
-    const [savingPolicy, setSavingPolicy] = useState(false);
     const [savingAgreement, setSavingAgreement] = useState(false);
     const [savingLoginMode, setSavingLoginMode] = useState(false);
+    const [savingEmailPolicy, setSavingEmailPolicy] = useState<"" | "emailRequired" | "emailVerificationRequired">("");
     const [dirty, setDirty] = useState(false);
     const [draftLinuxDOEnabled, setDraftLinuxDOEnabled] = useState(false);
     const [agreementTitle, setAgreementTitle] = useState("");
@@ -70,11 +68,10 @@ export default function AccessSettingsPanel() {
             else setRefreshing(true);
             setLoadError("");
             try {
-                const [linuxdoData, registrationData, policyData] = await Promise.all([getAdminLinuxDOSetting(), getAdminRegistrationSetting(), getVerificationPolicy()]);
+                const [linuxdoData, registrationData] = await Promise.all([getAdminLinuxDOSetting(), getAdminRegistrationSetting()]);
                 if (requestVersion !== requestVersionRef.current) return;
                 setLinuxdo(linuxdoData.setting);
                 setRegistration(registrationData.setting);
-                setPolicy(policyData);
                 setAgreementTitle(registrationData.setting.agreementTitle || "");
                 setAgreementContent(registrationData.setting.agreementContent || "");
                 setAgreementDirty(false);
@@ -230,19 +227,19 @@ export default function AccessSettingsPanel() {
         void toggleRegistration(enabled).catch(() => undefined);
     };
 
-    const toggleRegistrationVerification = async (required: boolean) => {
-        if (!policy || savingPolicy) return;
-        const expected = { ...policy, passwordRegistration: !required, emailRegistration: required, smsRegistration: false, smsAndEmailRegistration: false };
-        setSavingPolicy(true);
+    // 邮箱要求与注册开关同属 registration 配置：只提交本次切换的字段，其余由服务端保留。
+    const changeEmailPolicy = async (field: "emailRequired" | "emailVerificationRequired", value: boolean) => {
+        if (!registration || savingEmailPolicy) return;
+        setSavingEmailPolicy(field);
         try {
-            const result = await saveVerificationPolicy(expected);
-            if (Object.entries(expected).some(([key, value]) => result[key as keyof VerificationPolicy] !== value)) throw new Error("服务端返回的注册策略与保存内容不一致，请刷新核对");
-            setPolicy(result);
-            message.success(required ? "已启用邮箱验证码注册" : "已关闭注册验证码，用户填写邮箱和密码即可注册");
+            const data = await updateAdminRegistrationSetting({ enabled: registration.enabled, [field]: value });
+            setRegistration(data.setting);
+            void useAuthSettingsStore.getState().load({ maxAgeMs: 0 });
+            message.success(field === "emailRequired" ? (value ? "注册时必须填写邮箱" : "注册时邮箱改为选填") : value ? "注册需先通过验证码" : "注册不再要求验证码");
         } catch (error) {
-            message.error(error instanceof Error ? error.message : "保存注册策略失败");
+            message.error(error instanceof Error ? error.message : "更新邮箱要求失败");
         } finally {
-            setSavingPolicy(false);
+            setSavingEmailPolicy("");
         }
     };
 
@@ -362,7 +359,7 @@ export default function AccessSettingsPanel() {
                             撤销调整
                         </Button>
                     ) : null}
-                    <Button icon={<RefreshCw className="size-4" />} loading={refreshing} disabled={savingLinuxDO || savingRegistration || savingPolicy || savingLoginMode} onClick={requestRefresh}>
+                    <Button icon={<RefreshCw className="size-4" />} loading={refreshing} disabled={savingLinuxDO || savingRegistration || savingLoginMode} onClick={requestRefresh}>
                         刷新状态
                     </Button>
                 </div>
@@ -399,19 +396,40 @@ export default function AccessSettingsPanel() {
                     </div>
                     <div className="admin-access-registration-policy">
                         <span className="admin-access-policy-icon">
-                            <ShieldCheck className="size-5" aria-hidden="true" />
+                            <Mail className="size-5" aria-hidden="true" />
                         </span>
                         <div className="admin-access-policy-copy">
-                            <strong>注册时要求邮箱验证码</strong>
-                            <p>关闭后使用邮箱、用户名和密码直接注册，不发送验证码。邮箱仍需符合格式及域名规则，且不会标记为已验证。</p>
-                            <span>切换即保存，并替换当前短信或双重验证注册方式；重新开启前须启用邮件服务。注册总开关仍然有效。</span>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <strong>注册必须填写邮箱</strong>
+                                <AdminStatusBadge label="切换即保存" tone="info" />
+                            </div>
+                            <p>关闭时邮箱选填，用户可只用用户名注册，之后在账号设置中绑定邮箱。用邮箱作账号登录时始终会保存邮箱。</p>
                         </div>
                         <Switch
-                            checked={policy ? !policy.passwordRegistration : true}
-                            loading={savingPolicy}
-                            disabled={!policy || loading || refreshing || savingPolicy}
-                            onChange={(required) => void toggleRegistrationVerification(required)}
-                            aria-label="注册时要求邮箱验证码"
+                            checked={Boolean(registration.emailRequired)}
+                            loading={savingEmailPolicy === "emailRequired"}
+                            disabled={loading || refreshing || Boolean(savingEmailPolicy)}
+                            onChange={(value) => void changeEmailPolicy("emailRequired", value)}
+                            aria-label="注册必须填写邮箱，切换后立即生效"
+                        />
+                    </div>
+                    <div className="admin-access-registration-policy">
+                        <span className="admin-access-policy-icon">
+                            <MailCheck className="size-5" aria-hidden="true" />
+                        </span>
+                        <div className="admin-access-policy-copy">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <strong>注册必须通过验证码</strong>
+                                <AdminStatusBadge label="切换即保存" tone="info" />
+                            </div>
+                            <p>开启时按登录注册策略验证邮箱或手机号（需先配置邮件服务）。关闭后填写的邮箱标记为“未验证”，不能用于邮箱验证码登录，用户可在账号设置中验证。注意：未验证邮箱同样会占用该地址，真实邮箱主人无法再用它注册。</p>
+                        </div>
+                        <Switch
+                            checked={registration.emailVerificationRequired !== false}
+                            loading={savingEmailPolicy === "emailVerificationRequired"}
+                            disabled={loading || refreshing || Boolean(savingEmailPolicy)}
+                            onChange={(value) => void changeEmailPolicy("emailVerificationRequired", value)}
+                            aria-label="注册必须通过验证码，切换后立即生效"
                         />
                     </div>
                 </SettingsSectionCard>
