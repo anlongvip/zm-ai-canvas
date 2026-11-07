@@ -6,8 +6,8 @@
 
 | 项 | 值 |
 | --- | --- |
-| 生产版本 | 已重装重建：`v1.8.1` 全新部署（Schema 89），待升级到 `v1.8.2`（Schema 91） |
-| 仓库 | 本地 `main` = `ecde3555`（v1.8.2 合并提交），tag `v1.8.2` 待打 |
+| 生产版本 | 已重建：`v1.8.1` 全新部署（Schema 89）；待后台升级到 `v1.8.2`（Schema 91） |
+| 仓库 | 本地 `main` = `2a71c2b8`，tag `v1.8.2` 已发布（Release #437201502） |
 | 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里 |
 | 分支 | 只有 `main`（其余已清理） |
 | 上游 | 已同步到作者 `v1.8.2`（`8611fc0e..cd2512eb`，18 个提交、219 个文件） |
@@ -65,6 +65,7 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
 | `verify-linux.ps1` 大批用例失败（app/rest/canvas/database） | WSL 里 PostgreSQL 与 Redis 没起，WSL 无 systemd | `wsl -d zm-ai-canvas-ci -- bash -lc "service postgresql start; service redis-server start"`，再跑验证 |
 | 本机 `gofmt -l` 报全仓库文件未格式化 | Windows 检出 `core.autocrlf=true`，文件是 CRLF | 本地不看 gofmt 结论，以 WSL/Linux 验证为准 |
 | `git fetch upstream` 报 `schannel SEC_E_NO_CREDENTIALS` | 本机 Git 走 schannel 取不到 TLS 凭证 | `git config --local http.sslBackend openssl` |
+| 后台点「开始更新」在备份步骤失败 | 服务器 Compose `v2.28.1` 不支持 `compose run --pull never`（`manager_ops.go` 备份/恢复依赖它） | 升级 Compose CLI 插件到 `v2.40.3`，Docker Engine 不用换 |
 
 ## 待办（都不紧急）
 
@@ -90,6 +91,8 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
 - 2026-11-07 08:00 合并上游 v1.8.2（`8611fc0e..cd2512eb`，18 提交/219 文件，Schema 89→91）。
   处理 7 处冲突：认证类全部采用上游版本并删除本地免验证码注册二开；渠道投影保留二开并叠加上游媒体传输装饰。
   首次验证 5 项失败原因为 WSL 数据库服务未启动，启动 PostgreSQL/Redis 后 12 项全过（232 秒）。
+- 2026-11-07 08:13 `v1.8.2` 发布完成：main CI 6m19s 全绿（三镜像已构建），tag 轮 2m35s、质量检查复用 main 结果跳过、
+  Release 四附件齐全（compose、updater amd64/arm64、SHA256SUMS）。生产仍是 `v1.8.1`/Schema 89，待后台升级到 Schema 91。
 
 ## 环境说明（不要误删）
 
