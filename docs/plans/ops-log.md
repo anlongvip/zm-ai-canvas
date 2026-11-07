@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 生产版本 | 已重建：`v1.8.1` 全新部署（Schema 89）；待后台升级到 `v1.8.2`（Schema 91） |
+| 生产版本 | **`v1.8.2`**，Schema **91**；五服务 healthy，镜像已固定 digest |
 | 仓库 | 本地 `main` = `2a71c2b8`，tag `v1.8.2` 已发布（Release #437201502） |
 | 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里 |
 | 分支 | 只有 `main`（其余已清理） |
@@ -93,6 +93,13 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
   首次验证 5 项失败原因为 WSL 数据库服务未启动，启动 PostgreSQL/Redis 后 12 项全过（232 秒）。
 - 2026-11-07 08:13 `v1.8.2` 发布完成：main CI 6m19s 全绿（三镜像已构建），tag 轮 2m35s、质量检查复用 main 结果跳过、
   Release 四附件齐全（compose、updater amd64/arm64、SHA256SUMS）。生产仍是 `v1.8.1`/Schema 89，待后台升级到 Schema 91。
+- 2026-11-07 08:24 生产升级 `v1.8.1 → v1.8.2` 成功。升级前把服务器 Compose 从 v2.28.1 升到 **v2.40.3**
+  （备份步骤依赖 `compose run --pull never`，低于 2.30 会失败）。备份 `backup-20261107-002414`，411.63 MB，
+  来源 v1.8.1。升级后 Schema **91**，五服务 healthy，backend 日志无 panic/error。
+  三镜像 digest：backend `sha256:18ab27e4737719f5b32077e8c06cc47d3a917f5c418a5d626cbe0f89988a99d4`、
+  web `sha256:3946ac8c328b0ee453c245add696d18692e62db3c0b5739ecf103fbc89eb6dd8`、
+  yingce-agent `sha256:7114dd88483897094ed5c4b0e4cf1b037f9817949aca35db92a1b9d65aa70064`。
+  未验证：登录与画布实操抽查（待用户确认）。
 
 ## 环境说明（不要误删）
 
