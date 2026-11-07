@@ -2,15 +2,16 @@
 
 本文件记录跨会话的现状、决定与待办。新会话先读这里，再读 `AGENTS.md` §10 / §10.7。
 
-## 当前状态（2026-11-06 11:10）
+## 当前状态（2026-11-07 08:00）
 
 | 项 | 值 |
 | --- | --- |
-| 生产版本 | **`v1.8.0`**；`v1.8.1` 已发布，等待后台升级（Schema 87→89） |
-| 仓库 | `origin/main` = 本地 `main` = `a03bfc75`，tag `v1.8.1` |
+| 生产版本 | 已重装重建：`v1.8.1` 全新部署（Schema 89），待升级到 `v1.8.2`（Schema 91） |
+| 仓库 | 本地 `main` = `ecde3555`（v1.8.2 合并提交），tag `v1.8.2` 待打 |
 | 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里 |
 | 分支 | 只有 `main`（其余已清理） |
-| 上游 | 已同步到作者 `v1.8.1`（21 个提交、68 个文件） |
+| 上游 | 已同步到作者 `v1.8.2`（`8611fc0e..cd2512eb`，18 个提交、219 个文件） |
+| 生产域名 | `https://ai.zhimomedia.com`（宝塔反代 → 127.0.0.1:3000），`zhimo.pro` 301 跳转 |
 
 ## v1.8.1 发版记录（2026-11-06 10:06）
 
@@ -61,6 +62,9 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
 | PowerShell 跑 `*.ps1` 报 ParserError | 脚本是无 BOM 的 UTF-8，PS 5.1 按 ANSI 读 | 存成带 BOM 的 UTF-8（`scripts/verify-linux.ps1` 已是 BOM） |
 | `pack.py` 报 `Unexpected UTF-8 BOM` | 同上，反向问题 | JSON 写无 BOM 的 UTF-8 |
 | 插件渠道图标显示灰底 PAY | 清单 icon 写的是包内路径，宿主只认 `brand:*` | manifest 用品牌键 |
+| `verify-linux.ps1` 大批用例失败（app/rest/canvas/database） | WSL 里 PostgreSQL 与 Redis 没起，WSL 无 systemd | `wsl -d zm-ai-canvas-ci -- bash -lc "service postgresql start; service redis-server start"`，再跑验证 |
+| 本机 `gofmt -l` 报全仓库文件未格式化 | Windows 检出 `core.autocrlf=true`，文件是 CRLF | 本地不看 gofmt 结论，以 WSL/Linux 验证为准 |
+| `git fetch upstream` 报 `schannel SEC_E_NO_CREDENTIALS` | 本机 Git 走 schannel 取不到 TLS 凭证 | `git config --local http.sslBackend openssl` |
 
 ## 待办（都不紧急）
 
@@ -83,6 +87,9 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
 - 2026-11-06 00:21 生产升级 v1.8.0 成功，Schema 87 确认；保留策略首次清理旧备份。
 - 2026-11-06 00:45 清理分支：删除已合并的 8 个临时/同步分支，仅保留 main 与两支早期 runninghub 分支。
 - 2026-11-06 01:00 仓库只剩 `main`；`scripts/verify-linux.ps1` 增加旧验证副本清理（只保留最近一份历史副本）。
+- 2026-11-07 08:00 合并上游 v1.8.2（`8611fc0e..cd2512eb`，18 提交/219 文件，Schema 89→91）。
+  处理 7 处冲突：认证类全部采用上游版本并删除本地免验证码注册二开；渠道投影保留二开并叠加上游媒体传输装饰。
+  首次验证 5 项失败原因为 WSL 数据库服务未启动，启动 PostgreSQL/Redis 后 12 项全过（232 秒）。
 
 ## 环境说明（不要误删）
 
