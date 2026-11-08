@@ -886,6 +886,12 @@ func (r *Repository) RefundBillingOrder(id string, errorText string) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&order, "id = ?", id).Error; err != nil {
 			return err
 		}
+		// 上游 v1.8.3 把退款主体抽成 refundBillingOrder，手动入口本身不再校验业务状态。
+		// 二开的不确定单防护必须留在这里：按秒计费的视频订单在运行时恢复被判定为
+		// 余额不足后，预留已经退回过，再次手动退款会动用其他订单的冻结积分。
+		if order.Status == model.BillingStatusUncertain && order.Capability == "video" && order.BillingMode == "per_second" && order.RefundedAt != nil {
+			return ErrBillingStateConflict
+		}
 		return refundBillingOrder(tx, order, errorText)
 	})
 }
