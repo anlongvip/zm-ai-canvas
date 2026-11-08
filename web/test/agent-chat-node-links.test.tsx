@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+// 同进程运行的其他测试会注入 window（Agent 提问生命周期），此时从 "react-dom/server"
+// 解析会拿到浏览器构建，清理 window 后再渲染就会抛 "window is not defined"。
+// 本文件做的是 SSR 断言，固定使用 Node 构建，避免受同进程 DOM 注入的影响。
+import { renderToStaticMarkup } from "react-dom/server.node";
 import { AgentChatMessage, rewriteAgentNodeLinks, type CloudAgentChatMessage } from "@/components/canvas/canvas-cloud-agent-chat-ui";
 import { canvasThemes } from "@/lib/canvas-theme";
 
