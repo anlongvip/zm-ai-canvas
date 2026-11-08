@@ -111,6 +111,11 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
   仅 2 处冲突：`finance_billing.go`（计费，逐行核对）与 `agent-question-lifecycle.test.tsx`（上游重写测试，取上游并删除已无引用的 harness 夹具）。
   计费侧二开的「实际运行时间结算 / 不确定单防重复退款 / 恢复无债上限」三条规则完整保留，通用退款改走上游 `refundBillingOrder`。
   **行为变化**：自动退款队列改内连接 tasks，无任务行的孤儿订单不再自动退款（上游防误退电商独立域的语义），我方自测已同步更新。
+- 2026-11-08 17:12 **二开测试抓到真实回归**：上游把退款主体抽成 `refundBillingOrder` 后，手动退款入口
+  `RefundBillingOrder` 只剩加锁 + 调用，丢掉了「不确定单（按秒视频、已退过一次）不得再退」的防护。
+  首次验证暴露为 `TestRestoreRefundedVideoRuntimeInsufficientCreditsRequiresReview` 把状态从 uncertain 改成 refunded，
+  即会动用其他订单的冻结积分重复退款。已在手动退款入口补回该防护，验证 12 项全过。
+  教训：计费重构类上游改动，冲突解决后必须看**测试是否仍在断言原有业务不变量**，不能只看编译通过。
 
 ## 环境说明（不要误删）
 
