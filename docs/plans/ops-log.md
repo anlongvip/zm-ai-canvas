@@ -116,6 +116,13 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
   首次验证暴露为 `TestRestoreRefundedVideoRuntimeInsufficientCreditsRequiresReview` 把状态从 uncertain 改成 refunded，
   即会动用其他订单的冻结积分重复退款。已在手动退款入口补回该防护，验证 12 项全过。
   教训：计费重构类上游改动，冲突解决后必须看**测试是否仍在断言原有业务不变量**，不能只看编译通过。
+- 2026-11-08 17:45 v1.8.3 合并期间另外两处回归与处置：
+  1. `web/test/agent-question-lifecycle.test.tsx` 上游改成同进程注入 DOM，会污染同批 SSR 测试
+     （`agent-chat-node-links.test.tsx` 报 `window is not defined`，CI 复现、本地复现不稳定）。
+     处置：恢复二开的「子进程隔离」版本并还原 harness 夹具；**代价是失去上游该文件新增的部分断言**，
+     后续如需找回，应把新用例移植进 harness 而不是退回同进程注入。
+  2. 用 PowerShell `>` 还原文件写出了 UTF-16，导致 eslint/prettier 判定为二进制。
+     教训：还原仓库文件一律用 `git checkout <commit> -- <path>`，不要用 shell 重定向。
 
 ## 环境说明（不要误删）
 
