@@ -40,7 +40,7 @@ Windows 本机使用 [Linux 验证环境](plans/local-ci-environment.md) 的 `.l
 
 PR 通过和合入不等于生产已更新。发布使用自己仓库构建的新版本；在新镜像、更新器和校验文件齐备后，按现有 Host Updater 流程升级。发布前确认数据库备份和旧镜像可回滚，保留数据库、Redis、Agent、OSS、配置和数据卷。
 
-本轮同步以 `origin/main` 的 `v1.8.1`（`a03bfc75`）为基线，合并作者 `8611fc0e..cd2512eb` 共 18 个提交、219 个文件，Schema 升至 91。合并已通过 `scripts/verify-linux.ps1`（12 项全过）；发布与生产升级另按发版流程执行。
+本轮同步以 `origin/main` 的 `v1.8.2`（`2a71c2b8`）为基线，合并作者 `cd2512eb..ee6c0ee2` 共 15 个提交、103 个文件，Schema 升至 92。合并冲突 2 处（计费仓储、Agent 提问测试），计费部分按 §10.6 逐行核对，二开三条规则完整保留；发布与生产升级另按发版流程执行。
 
 禁止把 `.env`、API Key、数据库、上传文件和 `.settings-key` 提交到仓库。
 
