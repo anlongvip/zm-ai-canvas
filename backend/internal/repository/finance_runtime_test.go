@@ -346,14 +346,26 @@ func TestRestoreRefundedVideoRuntimeInsufficientCreditsRequiresReview(t *testing
 				review.ProviderRequestID != "rh-task" || review.Error == "" || review.SettledAt != nil {
 				t.Fatalf("insufficient recovery not safely audited: order=%#v account=%#v", review, after)
 			}
-			for _, retry := range []func() error{
-				func() error { return repo.SettleBillingOrderWithAudioDuration(order.ID, "rh-task", 120100) },
-				func() error { return repo.SettleBillingOrder(order.ID, "rh-task") },
-				func() error { return repo.RefundBillingOrder(order.ID, "retry refund") },
+			for _, retry := range []struct {
+				name string
+				fn   func() error
+			}{
+				{"audio settle", func() error { return repo.SettleBillingOrderWithAudioDuration(order.ID, "rh-task", 120100) }},
+				{"settle", func() error { return repo.SettleBillingOrder(order.ID, "rh-task") }},
 			} {
-				if err := retry(); !errors.Is(err, ErrBillingStateConflict) {
-					t.Fatalf("released reservation reused: %v", err)
+				if err := retry.fn(); !errors.Is(err, ErrBillingStateConflict) {
+					t.Fatalf("%s reused released reservation: %v", retry.name, err)
 				}
+			}
+			// 上游 v1.8.3 起手动退款只作用于自动退款队列内的订单；本单任务已成功，
+			// 不在队列内，因此这里必须是「无资金变动」的空操作，而不是再次退款。
+			if err := repo.RefundBillingOrder(order.ID, "retry refund"); err != nil && !errors.Is(err, ErrBillingStateConflict) {
+				t.Fatalf("manual refund on released reservation: %v", err)
+			}
+			// 空操作必须真的没有动账：状态、已退金额都不能变，否则就是重复退款。
+			unchanged, _ := repo.BillingOrder(order.ID)
+			if unchanged.Status != model.BillingStatusUncertain || unchanged.RefundedAmountMicrocredits != 12500 || unchanged.SettledAt != nil {
+				t.Fatalf("manual refund touched released reservation: %#v", unchanged)
 			}
 			if err := repo.RestoreRefundedBillingOrderWithRuntime(order.ID, "rh-task", 120100); !errors.Is(err, ErrInsufficientCredits) {
 				t.Fatalf("review retry should still require available funds: %v", err)
