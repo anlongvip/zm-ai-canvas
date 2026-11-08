@@ -6,7 +6,7 @@ import (
 	"yingce/backend/internal/model"
 )
 
-func TestAutoRefundableBillingOrdersExcludesSucceededTasks(t *testing.T) {
+func TestAutoRefundableBillingOrdersRequiresTerminalTask(t *testing.T) {
 	repo, db := newRefundedBillingRecoveryRepository(t)
 	if err := db.AutoMigrate(&model.Task{}); err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestAutoRefundableBillingOrdersExcludesSucceededTasks(t *testing.T) {
 		}
 	}
 
-	items, err := repo.AutoRefundableBillingOrders(10)
+	items, err := repo.AutoRefundableBillingOrders(10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,12 @@ func TestAutoRefundableBillingOrdersExcludesSucceededTasks(t *testing.T) {
 	if got["order-succeeded"] {
 		t.Fatalf("succeeded task was returned for automatic refund: %#v", items)
 	}
-	if !got["order-failed"] || !got["order-orphan"] {
-		t.Fatalf("eligible uncertain orders were omitted: %#v", items)
+	if !got["order-failed"] {
+		t.Fatalf("eligible uncertain order was omitted: %#v", items)
+	}
+	// 上游 v1.8.3 起只自动退回能证明已终止的通用任务订单：没有 tasks 行的订单可能属于
+	// 电商等独立运行域，缺少任务行不能当作停止执行的证据，因此不得进入自动退款队列。
+	if got["order-orphan"] {
+		t.Fatalf("order without a task row must not be auto refunded: %#v", items)
 	}
 }
