@@ -2,17 +2,46 @@
 
 本文件记录跨会话的现状、决定与待办。新会话先读这里，再读 `AGENTS.md` §10 / §10.7。
 
-## 当前状态（2026-11-11 07:10）
+## 当前状态（2026-11-11 08:30）
 
 | 项 | 值 |
 | --- | --- |
-| 生产版本 | **`v1.8.3`**，Schema **92**（五服务 healthy，镜像固定 digest） |
-| 仓库 | 本地 `main` = `94023796` = `origin/main`；tag `v1.8.3` → `94023796`，Release #438162647 |
+| 生产版本 | **`v1.8.3`**，Schema **92**（五服务 healthy）—— **待升级到 `v1.8.4.1`（Schema 98）** |
+| 仓库 | 本地 `main` = `b0c6f55b` = `origin/main`；tag `v1.8.4.1` → `b0c6f55b`，Release #441089428 |
 | 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里 |
 | 分支 | 只有 `main`（其余已清理） |
-| 上游 | 已同步到作者 `v1.8.3`（`cd2512eb..ee6c0ee2`，15 提交、103 文件） |
+| 上游 | 已同步到作者 `v1.8.4.1`（`ee6c0ee2..c8d274f4`，65 提交、923 文件；Schema 92→98） |
 | 生产域名 | `https://ai.zhimomedia.com`（宝塔反代 → 127.0.0.1:3000），`zhimo.pro` 301 跳转 |
 | 服务器 | 香港 Debian 12，Compose **v2.40.3**（低于 2.30 会导致后台更新在备份步骤失败） |
+
+## v1.8.4.1 发版记录（2026-11-11 08:27）
+
+- 上游范围：`ee6c0ee2..c8d274f4`（作者 v1.8.4 + v1.8.4.1），65 个提交、923 个文件，+61628/−20180；Schema **92 → 98**。
+- 上游健康闸门：`c8d274f4` 的 30 个 check run 全 success/skipped（GitHub API 只读核对）。
+- 合并：`f05c3436`。仅 2 处冲突 —— `cloud_agent_canvas_events_test.go`（注释措辞，取上游）、
+  `model_capability.go`（上游把「型号建议」从保存路径移到默认配置构造 `model_capability_defaults.go`，
+  已按上游语义处理，同时保留二开 RunningHub 档位校验）。
+- §10.6 逐项核对：`docker-compose.deploy.yml` 仅新增 5 个 `CANVAS_OIDC_*`（默认空=关闭），不动镜像标签；
+  `drama_orchestrator.go`（造型以本体为底图、本体失败落失败）、`provider.go`（`sourceResourceId` + 生成快照）、
+  `cloud_agent_pi_coordinator.go`/`cloud_agent_runtime_media.go`（终态清理可续跑、取消先落库再中断）均为上游行为；
+  计费三条二开规则在位：`finance.go:401` 不确定单（按秒视频、已退过）只走 `CloseRefundedRuntimeBillingReview`，
+  `runninghub_runtime_billing.go` 仍按 `taskCostTime` 结算。
+- 迁移演练：旧版 `migrate-schema` 空库 0→92，新版 92→98，均 `{"current":98,"expected":98,"ready":true}`；空库 0→98 同样通过。
+- 验证：`scripts/verify-linux.ps1` 13 项，**最终 13/13 通过（210.9s）**。
+  首轮 `web:e2e` 失败 7 条，全部是 `/@fs/.../node_modules/@fontsource-variable/jetbrains-mono/*.woff2` 403：
+  验证副本把 `node_modules` 做成软链，Vite `server.fs.allow` 拒绝 root 外真实路径。字体引用早于本次合并
+  （`c3e27587`，2026-09-06）。**环境问题，非业务回归**：把副本里的软链换成 `mount --bind` 后 E2E 76/76 通过。
+  下次跑验证若复现，按同样方式处理，不要改业务代码或放宽断言。
+- CI：main `b0c6f55b` 「Publish container images #66」7m18s 全绿（Quality checks 含支付插件双架构 + 三镜像 amd64 构建）；
+  tag 轮 2m15s，`Reuse an existing commit image` 成功、`Build and push immutable commit image` **skipped**（镜像复用生效）。
+- Release **#441089428**（`v1.8.4.1`，正式版非 prerelease），四附件齐全：
+  `docker-compose.deploy.yml`、`open-ai-canvas-host-updater-linux-amd64`、
+  `open-ai-canvas-host-updater-linux-arm64`、`SHA256SUMS`
+  （amd64 `8b469dd2…98c7`、arm64 `48de764f…ab62`）。
+- **未验证**：三镜像 digest（GHCR 包需登录，本机无 `gh`/token，只能升级后在服务器 `docker image inspect` 核对）；
+  生产升级后的登录、画布写入、短剧流程与退款对账。
+- 其它：本轮 `git fetch upstream --tags` 会把作者 tag `v1.8.4`/`v1.8.4.1` 拉进本地，它们指向作者提交，
+  发版前必须 `git tag -d` 掉，否则 `cut-release.mjs` 的 `lastTag()` 会误取作者 tag；`origin` 上只有我方 tag。
 
 ## v1.8.1 发版记录（2026-11-06 10:06）
 
