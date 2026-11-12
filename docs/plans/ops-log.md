@@ -2,17 +2,40 @@
 
 本文件记录跨会话的现状、决定与待办。新会话先读这里，再读 `AGENTS.md` §10 / §10.7。
 
-## 当前状态（2026-11-11 08:30）
+## 当前状态（2026-11-12 08:40）
 
 | 项 | 值 |
 | --- | --- |
-| 生产版本 | **`v1.8.3`**，Schema **92**（五服务 healthy）—— **待升级到 `v1.8.4.1`（Schema 98）** |
-| 仓库 | 本地 `main` = `b0c6f55b` = `origin/main`；tag `v1.8.4.1` → `b0c6f55b`，Release #441089428 |
+| 生产版本 | **`v1.8.3`**，Schema **92**（五服务 healthy）—— **待升级到 `v1.8.5`（Schema 100）**；`v1.8.4.1` 是否已上线未确认 |
+| 仓库 | 本地 `main` = `795edb01` = `origin/main`；tag `v1.8.5` → `795edb01`，Release 已发布（四附件齐全） |
 | 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里 |
 | 分支 | 只有 `main`（其余已清理） |
-| 上游 | 已同步到作者 `v1.8.4.1`（`ee6c0ee2..c8d274f4`，65 提交、923 文件；Schema 92→98） |
+| 上游 | 已同步到作者 `v1.8.5`（`c8d274f4..ac5e01ca`，16 提交、199 文件；Schema 98→100） |
 | 生产域名 | `https://ai.zhimomedia.com`（宝塔反代 → 127.0.0.1:3000），`zhimo.pro` 301 跳转 |
 | 服务器 | 香港 Debian 12，Compose **v2.40.3**（低于 2.30 会导致后台更新在备份步骤失败） |
+
+## v1.8.5 发版记录（2026-11-12 08:34）
+
+- 上游范围：`c8d274f4..ac5e01ca`（作者 v1.8.5），16 个提交、199 个文件，+24068/−2698；Schema **98 → 100**。
+- 上游健康闸门：`ac5e01ca` 的 30 个 check run 全 success/skipped。
+- 合并：`795edb01`。仅 2 处冲突：`CHANGELOG.md`（合成我方格式段落）、`scripts/verify-before-push.mjs`
+  （上游新增 `backend:pi-runtime` 跑 `node --test`，我方保留「只对改动 `.go` 文件 gofmt」以避开 Windows CRLF 误报）。
+- §10.6 核对结论：本轮上游**未改动** `finance|billing|refund|payment|hostupdate` 任何文件，二开计费三条规则路径不变；
+  `cloud_agent_pi_model.go` 改为 Pi 1.5.2 自管压缩（删除 Go 侧二次裁剪，新增上下文超限识别与真实 Token 用量回传）；
+  `service.go` 新增飞书日报 worker，未配置时直接返回；工具合同 `cloud-agent-tools/v11`、系统策略 v21。
+- 迁移演练：旧版空库 → 98；新版 98→100 `{"current":100,"expected":100,"ready":true}`；空库 0→100 同样通过。
+- 验证：Linux 全量 **13/13 通过**（109.6s，新增 `backend:pi-runtime`；`web:e2e` 跳过——本次无预演台改动）。
+  **环境修复（下次会再遇到）**：首轮 `web:test` 2 项失败，根因验证副本共用的
+  `/opt/canvas-ci/repo/web/node_modules` 是旧快照，缺上游新增依赖 `papaparse@5.7.0`。
+  处理：把合并后的 `web/package.json`、`web/bun.lock` 覆盖到该目录并 `bun install` 补齐，重跑即全绿。
+- CI：main `795edb01` run #69 **7m20s 全绿**（Quality checks 含支付插件双架构与三镜像 amd64 构建）；
+  tag 轮 #70 **2m18s**，`Quality checks` 按设计 skipped，`Publish release assets` 成功。
+- Release：`v1.8.5`（正式版），四附件齐全（`docker-compose.deploy.yml` 4.53 KB、
+  `open-ai-canvas-host-updater-linux-amd64` 6.54 MB、`…-arm64` 6.13 MB、`SHA256SUMS` 212 B），
+  附件 SHA256 已记录在 Release 页面。
+- **未验证**：三镜像 digest（GHCR 需登录，本机无 `gh`/token）、tag 轮「镜像复用」step 明细（GitHub API 触发未认证限流，
+  仅从 2m18s 时长与上一轮 138s 接近推断）、生产升级后的登录/画布/短剧/退款抽检。
+- 其它：`git fetch upstream --tags` 本轮又导入作者 tag `v1.8.4`/`v1.8.5`（发版前已 `git tag -d` 清理）。
 
 ## v1.8.4.1 发版记录（2026-11-11 08:27）
 

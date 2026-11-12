@@ -40,9 +40,9 @@ Windows 本机使用 [Linux 验证环境](plans/local-ci-environment.md) 的 `.l
 
 PR 通过和合入不等于生产已更新。发布使用自己仓库构建的新版本；在新镜像、更新器和校验文件齐备后，按现有 Host Updater 流程升级。发布前确认数据库备份和旧镜像可回滚，保留数据库、Redis、Agent、OSS、配置和数据卷。
 
-本轮同步以 `origin/main` 的 `v1.8.3`（`94023796`）为基线，合并作者 `ee6c0ee2..c8d274f4`（作者 v1.8.4 与 v1.8.4.1）共 65 个提交、923 个文件，Schema 由 92 升至 98。合并冲突 2 处（Agent 画布事件测试的注释、模型能力保存路径），`model_capability.go` 按上游「已保存能力由管理员决定、型号建议只构造默认配置」处理并保留 RunningHub 档位校验；发布与生产升级另按发版流程执行。发布前注意：`git fetch upstream --tags` 会把作者 tag `v1.8.4` / `v1.8.4.1` 拉进本地且指向作者提交，打自己的 tag 前必须删除，否则 `cut-release.mjs` 的 `lastTag()` 会误取作者 tag。
+本轮同步以 `origin/main` 的 `v1.8.4.1`（`795ba1bb`）为基线，合并作者 `c8d274f4..ac5e01ca`（作者 v1.8.5）共 16 个提交、199 个文件，Schema 由 98 升至 100。合并冲突 2 处（`CHANGELOG.md`、`scripts/verify-before-push.mjs`）：后者取上游新增的 `backend:pi-runtime`（`node --test`）并保留二开「只对改动 `.go` 文件 gofmt」以避开 Windows CRLF 误报。本轮上游未改动 `finance|billing|refund|payment|hostupdate` 文件，二开计费规则路径不变。发布前注意：`git fetch upstream --tags` 会把作者 tag `v1.8.4` / `v1.8.5` 拉进本地且指向作者提交，打自己的 tag 前必须删除，否则 `cut-release.mjs` 的 `lastTag()` 会误取作者 tag。另：验证环境共用 `/opt/canvas-ci/repo/web/node_modules`，上游新增前端依赖后需把最新 `package.json`/`bun.lock` 覆盖过去并 `bun install`，否则测试会报缺包（本轮 `papaparse`）。
 
-上一轮：以 `origin/main` 的 `v1.8.2`（`2a71c2b8`）为基线，合并作者 `cd2512eb..ee6c0ee2` 共 15 个提交、103 个文件，Schema 升至 92；合并冲突 2 处（计费仓储、Agent 提问测试），二开三条计费规则完整保留。
+上一轮：以 `origin/main` 的 `v1.8.3`（`94023796`）为基线，合并作者 `ee6c0ee2..c8d274f4`（作者 v1.8.4 与 v1.8.4.1）共 65 个提交、923 个文件，Schema 由 92 升至 98；合并冲突 2 处（Agent 画布事件测试的注释、模型能力保存路径），`model_capability.go` 按上游「已保存能力由管理员决定、型号建议只构造默认配置」处理并保留 RunningHub 档位校验。
 
 禁止把 `.env`、API Key、数据库、上传文件和 `.settings-key` 提交到仓库。
 
