@@ -26,6 +26,11 @@ set -euo pipefail
 source /opt/canvas-ci/env.sh
 root=/opt/canvas-ci/verify/$head
 # 只保留最近一份历史副本：每份约 1 GB，长期累积会把 WSL 磁盘撑大。
+# node_modules 是 bind mount，先卸载再删，否则 rm 会因挂载点非空而失败。
+for stale in /opt/canvas-ci/verify/*/web/node_modules /opt/canvas-ci/verify/*/backend/agent-runtime/pi/node_modules; do
+    [ -d "`$stale" ] || continue
+    mountpoint -q "`$stale" && umount "`$stale" || true
+done
 ls -1dt /opt/canvas-ci/verify/*/ 2>/dev/null | tail -n +2 | xargs -r rm -rf || true
 rm -rf "`$root"
 git init -q "`$root"
@@ -33,8 +38,11 @@ git -C "`$root" config core.autocrlf false
 git -C "`$root" fetch --quiet "$bundlePath" HEAD:refs/heads/verify refs/remotes/origin/main:refs/remotes/origin/main
 git -C "`$root" checkout -q verify
 git -C "`$root" config status.showUntrackedFiles no
-ln -s /opt/canvas-ci/repo/web/node_modules "`$root"/web/node_modules
-ln -s /opt/canvas-ci/repo/backend/agent-runtime/pi/node_modules "`$root"/backend/agent-runtime/pi/node_modules
+# 共享依赖用 bind mount 而不是软链：软链指向副本外的真实路径，Vite 的 server.fs.allow
+# 会拒绝对字体等资源的 /@fs 请求（previs E2E 表现为 403 @fontsource-variable）。
+mkdir -p "`$root"/web/node_modules "`$root"/backend/agent-runtime/pi/node_modules
+mount --bind /opt/canvas-ci/repo/web/node_modules "`$root"/web/node_modules
+mount --bind /opt/canvas-ci/repo/backend/agent-runtime/pi/node_modules "`$root"/backend/agent-runtime/pi/node_modules
 cd "`$root"
 bun scripts/verify-before-push.mjs --jobs $Jobs
 "@

@@ -3,7 +3,7 @@ import { http, apiBaseURL, type BackendEnvelope } from "@/services/api/request";
 import { consumeTaskTextStream, createTaskTextStreamParser, type TaskTextStreamEvent } from "@/services/api/task-text-stream";
 import { recordDiagnosticEvent } from "@/services/diagnostics/client-diagnostics";
 import { observeGenerationTaskStatus, observeGenerationTaskStatuses } from "@/services/generation-completion-tracker";
-import { assertCurrentUserSession, captureUserSession, getActiveUserScope } from "@/lib/user-scope";
+import { assertCurrentUserSession, captureUserSession, type UserSessionSnapshot } from "@/lib/user-scope";
 
 export type { BackendEnvelope } from "@/services/api/request";
 
@@ -244,17 +244,26 @@ export function createGenerationTaskSubscriptionService(dependencies: Generation
         controller?: AbortController;
         retry?: ReturnType<typeof setTimeout>;
         failures: number;
-        scope: string;
+        session: UserSessionSnapshot;
     };
     const entries = new Map<string, Entry>();
+    // 账号切换后旧快照不能继续落地：订阅期间的查询/等待结果只对捕获时的会话有效。
+    const sessionIsCurrent = (session: UserSessionSnapshot) => {
+        try {
+            assertCurrentUserSession(session);
+            return true;
+        } catch {
+            return false;
+        }
+    };
     const publish = (entry: Entry, task: GenerationTask) => {
-        if (entry.scope !== getActiveUserScope() || !entry.listeners.size) return false;
+        if (!entry.listeners.size || !sessionIsCurrent(entry.session)) return false;
         entry.latest = task;
         for (const listener of entry.listeners) listener(task);
         return true;
     };
     const observe = (id: string, entry: Entry) => {
-        if (entry.observation || !entry.listeners.size || entry.scope !== getActiveUserScope()) return;
+        if (entry.observation || !entry.listeners.size || !sessionIsCurrent(entry.session)) return;
         if (entry.latest && ["succeeded", "failed", "cancelled"].includes(entry.latest.status)) return;
         if (entry.retry) clearTimeout(entry.retry);
         entry.retry = undefined;
@@ -285,7 +294,7 @@ export function createGenerationTaskSubscriptionService(dependencies: Generation
             })
             .finally(() => {
                 entry.observation = undefined;
-                if (controller.signal.aborted || !entry.listeners.size || entry.scope !== getActiveUserScope()) return;
+                if (controller.signal.aborted || !entry.listeners.size || !sessionIsCurrent(entry.session)) return;
                 if (entry.latest && ["succeeded", "failed", "cancelled"].includes(entry.latest.status)) return;
                 const delayMs = Math.min(30_000, 2_000 * 2 ** Math.min(entry.failures++, 4));
                 entry.retry = setTimeout(() => observe(id, entry), delayMs);
@@ -305,13 +314,13 @@ export function createGenerationTaskSubscriptionService(dependencies: Generation
             const ownedEntries = new Map<string, Entry>();
             for (const id of uniqueIds) {
                 const old = entries.get(id);
-                if (old && old.scope !== getActiveUserScope()) {
+                if (old && !sessionIsCurrent(old.session)) {
                     old.controller?.abort();
                     if (old.retry) clearTimeout(old.retry);
                     old.listeners.clear();
                     entries.delete(id);
                 }
-                const entry = entries.get(id) ?? { listeners: new Set<(task: GenerationTask) => void>(), failures: 0, scope: getActiveUserScope() };
+                const entry = entries.get(id) ?? { listeners: new Set<(task: GenerationTask) => void>(), failures: 0, session: captureUserSession(true) };
                 entries.set(id, entry);
                 ownedEntries.set(id, entry);
                 entry.listeners.add(listener);
