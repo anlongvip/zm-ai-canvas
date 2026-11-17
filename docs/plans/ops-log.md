@@ -2,17 +2,48 @@
 
 本文件记录跨会话的现状、决定与待办。新会话先读这里，再读 `AGENTS.md` §10 / §10.7。
 
-## 当前状态（2026-11-12 08:40）
+## 当前状态（2026-11-17 17:30）
 
 | 项 | 值 |
 | --- | --- |
-| 生产版本 | **`v1.8.3`**，Schema **92**（五服务 healthy）—— **待升级到 `v1.8.5`（Schema 100）**；`v1.8.4.1` 是否已上线未确认 |
-| 仓库 | 本地 `main` = `795edb01` = `origin/main`；tag `v1.8.5` → `795edb01`，Release 已发布（四附件齐全） |
+| 生产版本 | **`v1.8.3`**，Schema **92**（五服务 healthy）—— **待升级到 `v1.8.6`（Schema 105）** |
+| 仓库 | 本地 `main` = `0d88e5be` = `origin/main`；tag `v1.8.6` → `0d88e5be`，Release 已发布（四附件齐全） |
 | 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里 |
-| 分支 | 只有 `main`（其余已清理） |
-| 上游 | 已同步到作者 `v1.8.5`（`c8d274f4..ac5e01ca`，16 提交、199 文件；Schema 98→100） |
+| 分支 | 只有 `main`（`codex/sync-v1.8.1` 为历史残留，可删） |
+| 上游 | 已同步到作者 `v1.8.6`（`ac5e01ca..f33c39c0`，67 提交、799 文件；Schema 100→105） |
 | 生产域名 | `https://ai.zhimomedia.com`（宝塔反代 → 127.0.0.1:3000），`zhimo.pro` 301 跳转 |
-| 服务器 | 香港 Debian 12，Compose **v2.40.3**（低于 2.30 会导致后台更新在备份步骤失败） |
+| 服务器 | 香港 Debian 12，Compose **v2.40.3**（低于 2.30 会导致后台更新在备份步骤失败）；用户 2026-11-17 确认配置足够承载 v1.8.6 新增资源上限 |
+
+## v1.8.6 发版记录（2026-11-17 17:25）
+
+- 上游范围：`ac5e01ca..f33c39c0`（作者 v1.8.6），67 个提交、799 个文件，+58841/−4473；Schema **100 → 105**。
+- 上游健康闸门：**未核对**——GitHub API 未认证限流（remaining 0，/commit 页与 /checks 均拿不到 check run），
+  仅依据作者已发正式 tag。下次开工若额度恢复应补核。
+- 合并：`0a468c3f`。5 处冲突：
+  1. `backend/internal/hostupdate/manager.go`：保留我方 fail-fast 回退（先停服 → 校验备份 → 还原数据库与 `backend` 数据目录 → 再启动），合入上游回退启动新增的 `--pull never`。
+  2. `backend/internal/hostupdate/manager_ops.go`：`selectLatestRelease` 过滤条件取并集（跳过 draft/prerelease，且要求 `v` 前缀 + `IsReleaseVersion`）。
+  3. `backend/internal/repository/finance_billing.go`：我方「不确定单（按秒视频、已退过）不得再结算」防护置于上游图片按用量计费分支之前。
+  4. `CHANGELOG.md`：合成我方格式段落（上游同步 + 二开核对 + 上游分项 + 升级说明）。
+  5. `docs/content/docs/overview/features.mdx`：双方新增段落都保留。
+- **二开补丁（本轮新发现的上游回归）**：上游 `584a05e9` 把 `getActiveUserScope()` 从「每次读 localStorage」改为内存快照，
+  但生成任务订阅（`web/src/services/api/task-center.ts`）仍用它和订阅时捕获的 scope 比较，账号切换后恒等 →
+  旧账号的查询/等待结果会继续落地并触发 `wallet:updated`，属于跨账号串数据。已改用
+  `captureUserSession`/`assertCurrentUserSession` 校验会话快照（提交 `0d88e5be`），`web:test` 3586 项全过，未放宽任何断言。
+- 迁移演练（WSL，PostgreSQL 16）：旧版 `v1.8.5` 空库 → 100；新版 100→105
+  `{"current":105,"expected":105,"yingceCurrent":4,"yingceExpected":4,"ready":true}`；空库 0→105 同上。
+- 验证：`scripts/verify-linux.ps1` **14/14 通过（401.6s）**。本轮修掉两个长期环境问题：
+  1. 验证脚本改用 `mount --bind` 挂 `node_modules`（原来是软链，指向副本外真实路径，Vite `server.fs.allow` 拒绝
+     `/@fs` 请求，previs E2E 报 `@fontsource-variable` 403；这是 v1.8.4.1 起的老问题，现已在脚本里根治）。
+  2. 脚本清理历史副本前先 `umount` 挂载点，避免 `rm -rf` 失败。
+- CI：main `0d88e5be` 通过（`Publish container images` 徽章 passing，72 次运行最新一次成功）；tag 轮成功、
+  Release 四附件齐全（`docker-compose.deploy.yml` 5.71 KB `sha256:fbe9892b…c19f`、
+  updater amd64 6.59 MB `sha256:8e223695…113f`、arm64 6.13 MB `sha256:1fc91dfa…004b`、
+  `SHA256SUMS` 212 B `sha256:e3e6e3a2…46ec`）。
+- **未验证**：tag 轮「镜像复用」step 明细（GitHub API 限流，仅从执行时长与徽章推断）；三镜像 digest（GHCR 需登录，
+  升级后在服务器 `docker image inspect` 核对）；生产升级后的登录/画布/短剧/退款抽检。
+- 升级前注意：v1.8.6 给 backend 与 yingce-agent 各加 `mem_limit 4g` / `cpus 2` / `pids_limit 256`，
+  agent 改 `read_only: true` + tmpfs 512m，`MAX_CONCURRENT_SESSIONS` 30→8；用户 2026-11-17 确认服务器配置足够。
+  另：工具合同 `cloud-agent-tools/v11` → v12，升级前需处理正在执行或待审批的旧运行。
 
 ## v1.8.5 发版记录（2026-11-12 08:34）
 
@@ -154,6 +185,10 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
 
 ## 变更记录
 
+- 2026-11-17 17:25 `v1.8.6` 发布完成（main `0d88e5be`，tag `v1.8.6`）：合并上游 `ac5e01ca..f33c39c0`（67 提交/799 文件，Schema 100→105），
+  5 处冲突按二开不变量解决；新增修复上游账号作用域改为内存快照后订阅路径的串数据问题；
+  Linux 验证 14/14（401.6s，验证脚本改用 bind mount 后 previs E2E 首次全绿）；Release 四附件齐全。
+  生产仍是 `v1.8.3`/Schema 92，待后台升级到 `v1.8.6`。
 - 2026-11-05 23:29 插件 1.0.5 上线验证通过（钱包页图标与文案生效，插件页版本 1.0.5）。
 - 2026-11-06 00:21 生产升级 v1.8.0 成功，Schema 87 确认；保留策略首次清理旧备份。
 - 2026-11-06 00:45 清理分支：删除已合并的 8 个临时/同步分支，仅保留 main 与两支早期 runninghub 分支。
