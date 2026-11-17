@@ -126,7 +126,7 @@ func TestDockerRollback(t *testing.T) {
 			}
 			runner := &dockerRollbackRunner{execRunner: execRunner{dir: installDir}, manager: manager, fault: fault}
 			manager.runner = runner
-			manager.runUpdate("v1.0.0", "v1.0.1")
+			manager.runUpdate("v1.0.0", "v1.0.1", testSources)
 			wantPhase := PhaseManualIntervention
 			if fault == "migration" {
 				wantPhase = PhaseRolledBack

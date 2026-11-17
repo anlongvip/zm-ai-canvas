@@ -19,6 +19,9 @@ import (
 	"time"
 )
 
+// testSources 是直连 GitHub + ghcr.io 的默认更新来源，与生产默认值一致。
+var testSources = Sources{GitHubSource: "direct", ImageSource: "ghcr"}
+
 type rollbackTestRunner struct {
 	calls                []string
 	marker               string
@@ -71,7 +74,7 @@ func (r *rollbackTestRunner) Run(_ context.Context, _ string, args, _ []string, 
 		return errors.New("injected old service startup failure")
 	case strings.Contains(joined, "entry in /data/"):
 		r.dataCleaned = true
-	case strings.Contains(joined, " up -d --remove-orphans"):
+	case strings.Contains(joined, " up -d") && strings.Contains(joined, "--remove-orphans"):
 		r.servicesStarted = true
 		r.dataBeforeStart = !r.dataFailure && !r.databaseFailure && len(r.databaseRestored) > 0 && len(r.dataRestored) > 0
 		if r.rollbackStartFailure {
@@ -173,7 +176,7 @@ func TestUpdateMigrationFailureRestoresFinalDatabaseAndBackendDataSnapshot(t *te
 	manager, closeServer := newRollbackTestManager(t, runner)
 	defer closeServer()
 
-	manager.runUpdate("v1.0.0", "v1.0.1")
+	manager.runUpdate("v1.0.0", "v1.0.1", testSources)
 
 	if manager.state.Operation.Phase != PhaseRolledBack {
 		t.Fatalf("operation phase = %q, want rolled_back; operation=%#v", manager.state.Operation.Phase, manager.state.Operation)
@@ -206,7 +209,7 @@ func TestUpdateMigrationFailureRestoresFinalDatabaseAndBackendDataSnapshot(t *te
 		"pg_restore",
 		"entry in /data/",
 		"tar backend -C /data -xf -",
-		"up -d --remove-orphans",
+		"up -d --pull never --remove-orphans",
 	)
 }
 
@@ -215,7 +218,7 @@ func TestBackupFailureRestartsOldServicesWithoutDatabaseOrDataRestore(t *testing
 	manager, closeServer := newRollbackTestManager(t, runner)
 	defer closeServer()
 
-	manager.runUpdate("v1.0.0", "v1.0.1")
+	manager.runUpdate("v1.0.0", "v1.0.1", testSources)
 
 	if manager.state.Operation.Phase != PhaseFailed {
 		t.Fatalf("operation phase = %q, want failed; operation=%#v", manager.state.Operation.Phase, manager.state.Operation)
@@ -238,7 +241,7 @@ func TestBackupFailureAndOldServiceStartFailureRequireManualIntervention(t *test
 	manager, closeServer := newRollbackTestManager(t, runner)
 	defer closeServer()
 
-	manager.runUpdate("v1.0.0", "v1.0.1")
+	manager.runUpdate("v1.0.0", "v1.0.1", testSources)
 
 	if manager.state.Operation.Phase != PhaseManualIntervention {
 		t.Fatalf("operation phase = %q, want manual_intervention; operation=%#v", manager.state.Operation.Phase, manager.state.Operation)
@@ -259,12 +262,12 @@ func TestDatabaseRestoreFailureKeepsBusinessServicesStopped(t *testing.T) {
 	manager, closeServer := newRollbackTestManager(t, runner)
 	defer closeServer()
 
-	manager.runUpdate("v1.0.0", "v1.0.1")
+	manager.runUpdate("v1.0.0", "v1.0.1", testSources)
 
 	if manager.state.Operation.Phase != PhaseManualIntervention {
 		t.Fatalf("operation phase = %q, want manual_intervention; operation=%#v", manager.state.Operation.Phase, manager.state.Operation)
 	}
-	if runner.dataCleaned || runner.servicesStarted || hasCall(runner.calls, "-xf -") || hasCall(runner.calls, " up -d --remove-orphans") {
+	if runner.dataCleaned || runner.servicesStarted || hasCall(runner.calls, "-xf -") || hasCall(runner.calls, " up -d --pull never --remove-orphans") {
 		t.Fatalf("database restore failure proceeded to data restore or service start: %#v", runner)
 	}
 }
@@ -274,12 +277,12 @@ func TestBackendDataRestoreFailureKeepsBusinessServicesStopped(t *testing.T) {
 	manager, closeServer := newRollbackTestManager(t, runner)
 	defer closeServer()
 
-	manager.runUpdate("v1.0.0", "v1.0.1")
+	manager.runUpdate("v1.0.0", "v1.0.1", testSources)
 
 	if manager.state.Operation.Phase != PhaseManualIntervention {
 		t.Fatalf("operation phase = %q, want manual_intervention; operation=%#v", manager.state.Operation.Phase, manager.state.Operation)
 	}
-	if !runner.dataCleaned || runner.servicesStarted || !hasCall(runner.calls, "tar backend -C /data -xf -") || hasCall(runner.calls, " up -d --remove-orphans") {
+	if !runner.dataCleaned || runner.servicesStarted || !hasCall(runner.calls, "tar backend -C /data -xf -") || hasCall(runner.calls, " up -d --pull never --remove-orphans") {
 		t.Fatalf("data restore failure proceeded to service start: %#v", runner)
 	}
 }
@@ -289,7 +292,7 @@ func TestRollbackStartupFailureStopsPartiallyStartedBusinessServices(t *testing.
 	manager, closeServer := newRollbackTestManager(t, runner)
 	defer closeServer()
 
-	manager.runUpdate("v1.0.0", "v1.0.1")
+	manager.runUpdate("v1.0.0", "v1.0.1", testSources)
 
 	if manager.state.Operation.Phase != PhaseManualIntervention {
 		t.Fatalf("operation phase = %q, want manual_intervention; operation=%#v", manager.state.Operation.Phase, manager.state.Operation)

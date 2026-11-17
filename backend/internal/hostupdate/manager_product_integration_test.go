@@ -99,7 +99,7 @@ func TestProductContainerRollback(t *testing.T) {
 					body = string(encoded)
 				}
 				manager.httpClient.Transport = productHealthTransport{manager: manager, version: version, compose: body}
-				manager.runUpdate(version, targetVersion)
+				manager.runUpdate(version, targetVersion, manager.state.Sources)
 				if !runner.injected || !runner.observedFailure {
 					t.Fatalf("real product failure not exercised: injected=%v failed=%v detail=%s", runner.injected, runner.observedFailure, runner.failureDetail)
 				}
@@ -288,7 +288,7 @@ func productContainerFixture(t *testing.T, dir, source, repository, version stri
 	if err := os.WriteFile(m.composePath(), encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.verifyImages(version); err != nil {
+	if _, err := m.verifyImages(immutableImageRefs(m.config.Repository, version)); err != nil {
 		t.Fatalf("cached release image digest verification: %v", err)
 	}
 	m.httpClient.Transport = productHealthTransport{manager: m, version: version, compose: string(encoded)}

@@ -432,7 +432,7 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 	if err != nil {
 		return err
 	}
-	state, err := cloudAgentDecodeForExecution(run)
+	state, err := s.cloudAgentDecodeForExecution(run)
 	if err != nil {
 		return err
 	}
@@ -465,7 +465,7 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 			if err != nil {
 				return err
 			}
-			state, err = cloudAgentDecodeForExecution(run)
+			state, err = s.cloudAgentDecodeForExecution(run)
 			if err != nil {
 				return err
 			}
@@ -828,6 +828,10 @@ func (s *Service) CancelCloudAgent(ctx context.Context, userID, id string) error
 			}
 			return nil
 		})
+		if agentStorageCapacityError(err) {
+			// Stopping a run must not require more transcript quota.
+			err = s.repo.MarkCloudAgentCancelled(userID, id, run.Revision)
+		}
 		if errors.Is(err, repository.ErrCreationConflict) {
 			continue
 		}

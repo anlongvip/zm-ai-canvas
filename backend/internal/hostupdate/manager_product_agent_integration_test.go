@@ -226,7 +226,7 @@ CREATE TABLE updater_evidence (marker text PRIMARY KEY); INSERT INTO updater_evi
 			}
 			released <- err
 		}()
-		m.runUpdate(version, version)
+		m.runUpdate(version, version, m.state.Sources)
 		if err := <-released; err != nil {
 			t.Fatal(err)
 		}
