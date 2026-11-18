@@ -2,11 +2,11 @@
 
 本文件记录跨会话的现状、决定与待办。新会话先读这里，再读 `AGENTS.md` §10 / §10.7。
 
-## 当前状态（2026-11-17 17:30）
+## 当前状态（2026-11-18 17:10）
 
 | 项 | 值 |
 | --- | --- |
-| 生产版本 | **`v1.8.3`**，Schema **92**（五服务 healthy）—— **待升级到 `v1.8.6`（Schema 105）** |
+| 生产版本 | **`v1.8.6`**，Schema **105**（官方素材账本 4/4，五服务 healthy）—— 已于 2026-11-17 17:0x 由后台更新完成 |
 | 仓库 | 本地 `main` = `0d88e5be` = `origin/main`；tag `v1.8.6` → `0d88e5be`，Release 已发布（四附件齐全） |
 | 工作区 | **只有 `E:\zm-ai-canvas` 一个**，`.git` 在这里 |
 | 分支 | 只有 `main`（`codex/sync-v1.8.1` 为历史残留，可删） |
@@ -39,11 +39,29 @@
   Release 四附件齐全（`docker-compose.deploy.yml` 5.71 KB `sha256:fbe9892b…c19f`、
   updater amd64 6.59 MB `sha256:8e223695…113f`、arm64 6.13 MB `sha256:1fc91dfa…004b`、
   `SHA256SUMS` 212 B `sha256:e3e6e3a2…46ec`）。
-- **未验证**：tag 轮「镜像复用」step 明细（GitHub API 限流，仅从执行时长与徽章推断）；三镜像 digest（GHCR 需登录，
-  升级后在服务器 `docker image inspect` 核对）；生产升级后的登录/画布/短剧/退款抽检。
+- **未验证**：tag 轮「镜像复用」step 明细（GitHub API 限流，仅从执行时长与徽章推断）。
+  三镜像 digest 与生产抽查已在升级后核对，见下方「生产升级记录」。
 - 升级前注意：v1.8.6 给 backend 与 yingce-agent 各加 `mem_limit 4g` / `cpus 2` / `pids_limit 256`，
   agent 改 `read_only: true` + tmpfs 512m，`MAX_CONCURRENT_SESSIONS` 30→8；用户 2026-11-17 确认服务器配置足够。
   另：工具合同 `cloud-agent-tools/v11` → v12，升级前需处理正在执行或待审批的旧运行。
+
+## 生产升级记录：v1.8.3 → v1.8.6（2026-11-17 17:0x）
+
+- 升级方式：后台「检查更新 → 开始更新」（用户执行），部署目录 `/opt/open-ai-canvas`，`CANVAS_IMAGE_TAG=1.8.6`。
+- 版本与提交：`/api/health` 返回 `build.version=v1.8.6`、
+  `build.commit=0d88e5be355ef814f99764676fbf782d2cfa3707`（与 tag `v1.8.6` 指向同一提交）、`buildTime=2026-11-17T17:03:13+08:00`。
+- Schema：`migrate verify` → `{"current":105,"expected":105,"yingceCurrent":4,"yingceExpected":4,"ready":true}`；
+  health 里 `schema.current=105`、`checks.database/runtime/schema` 全 true。
+- 服务：postgres、redis、backend、web、yingce-agent 全部 `healthy`（升级 16 小时后复查，Up 16 hours）。
+- 三镜像 digest（`docker image inspect` 核对，均为 `@sha256` 固定引用）：
+  - backend `sha256:3815d7c8eb3f1f985698978b26cb919783401dff01a6990dd980161a271b396b`
+  - web `sha256:94054f1b68ebe314ecdd79f291b6fe7357547d47087abcf4700f58658d64eb49`
+  - yingce-agent `sha256:4edd4348c93971d99a734b40847c2cd0eab75211bbb0451c322561b697b9910e`
+- 运行时：`status=ok`、`draining=false`、`activeWorkerTasks=0`，无残留旧合同（v11）运行；
+  `docker compose logs backend | grep -iE "panic|fatal"` 无输出。
+- 抽检：后台使用未发现错误（用户 2026-11-18 确认）。
+- **未记录**：本版停服备份文件名与升级耗时（代理拿不到后台更新日志，用户亦未提供）；下次升级前可在
+  `backup-*.zip` 目录核对。回滚仍为「恢复停服备份 + 切回 v1.8.3 镜像」，迁移单向。
 
 ## v1.8.5 发版记录（2026-11-12 08:34）
 
@@ -185,6 +203,8 @@ v1.8.0 装好后保留策略才开始生效。再下一次升级应看到：
 
 ## 变更记录
 
+- 2026-11-18 17:10 生产升级核对完成：`v1.8.6` / 提交 `0d88e5be` / Schema 105（官方素材 4/4）/ 五服务 healthy /
+  无 panic / 三镜像 digest 已记录；后台抽检未发现问题。当前状态表已改为 v1.8.6。
 - 2026-11-17 17:25 `v1.8.6` 发布完成（main `0d88e5be`，tag `v1.8.6`）：合并上游 `ac5e01ca..f33c39c0`（67 提交/799 文件，Schema 100→105），
   5 处冲突按二开不变量解决；新增修复上游账号作用域改为内存快照后订阅路径的串数据问题；
   Linux 验证 14/14（401.6s，验证脚本改用 bind mount 后 previs E2E 首次全绿）；Release 四附件齐全。
