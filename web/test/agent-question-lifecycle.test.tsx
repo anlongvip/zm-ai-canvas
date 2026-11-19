@@ -8,7 +8,7 @@ test("真实 Agent 提问生命周期在独立 DOM 环境中通过", () => {
     const result = Bun.spawnSync([process.execPath, "test", "./test/fixtures/agent-question-lifecycle.harness.tsx"], { cwd: resolve(import.meta.dir, ".."), timeout: 20000 });
     const output = new TextDecoder().decode(result.stdout) + new TextDecoder().decode(result.stderr);
     expect(result.exitCode, output).toBe(0);
-    expect(output).toContain("6 pass");
+    expect(output).toContain("8 pass");
     expect(output).toContain("0 fail");
     expect(Object.getOwnPropertyDescriptor(globalThis, "window")).toEqual(originalWindow);
 }, 25000);
