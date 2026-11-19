@@ -99,7 +99,7 @@ type ParameterSupport struct {
 
 type VideoCapabilityConfig struct {
 	// ExecutionTier selects the server-configured compute tier independently of output resolution.
-	ExecutionTier     string                 `json:"executionTier,omitempty"`
+	ExecutionTier     string `json:"executionTier,omitempty"`
 	providerID        string
 	providerModel     string
 	referenceContract *protocolcontract.VideoReferenceContract
