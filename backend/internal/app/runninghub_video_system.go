@@ -11,8 +11,19 @@ import (
 	"time"
 
 	"yingce/backend/internal/model"
+	"yingce/backend/internal/protocol"
 	"yingce/backend/internal/provider/runninghub"
 )
+
+// The host builds the RunningHub payload itself. Declare its slot contract here
+// so previously installed workflow plugins use the same rule as the sender.
+func runningHubVideoReferenceContract() *protocol.VideoReferenceContract {
+	return &protocol.VideoReferenceContract{
+		Layout: "workflow-node-slots",
+		Token:  "参考图{n}",
+		Models: map[string]int{runninghub.WorkflowID: 9},
+	}
+}
 
 // runRunningHubSystemVideo is the system-channel path for the current public
 // RunningHub v2 API. Canvas workflow entries keep using the legacy workflow
@@ -65,6 +76,13 @@ func (s *Service) runRunningHubSystemVideoWithPolicy(ctx context.Context, input 
 	if _, err := runninghub.BuildVideoInputs(videoInputs); err != nil {
 		return nil, err
 	}
+	referenceRequest := protocolRequestFromInput(input)
+	referencePlan, err := prepareDramaReferencePlan(input, referenceRequest, protocol.Metadata{
+		ID: input.Config.InterfaceType, VideoReferences: runningHubVideoReferenceContract(),
+	})
+	if err != nil {
+		return nil, err
+	}
 	for _, group := range []struct {
 		media []providerMedia
 		files *[]string
@@ -85,7 +103,22 @@ func (s *Service) runRunningHubSystemVideoWithPolicy(ctx context.Context, input 
 	if err != nil {
 		return nil, err
 	}
-	requestBody := runninghub.NewSubmitRequest(inputs, instance)
+	var requestBody any = runninghub.NewSubmitRequest(inputs, instance)
+	if len(referencePlan.required) > 0 {
+		for i := range referenceRequest.Images {
+			image := &referenceRequest.Images[i]
+			image.Metadata[protocol.MediaUploadIDKey] = videoInputs.Images[image.Order]
+		}
+		body, err := requestAsMap(requestBody)
+		if err != nil {
+			return nil, err
+		}
+		spec := protocol.RequestSpec{Body: body}
+		if err := referencePlan.compile(referenceRequest, &spec, input.VideoCapability); err != nil {
+			return nil, err
+		}
+		requestBody = spec.Body
+	}
 	var created runninghub.Response
 	if err := runningHubSystemJSON(ctx, input.Config, root+runninghub.SubmitPath(workflowID), requestBody, &created); err != nil {
 		return nil, fmt.Errorf("RunningHub 视频提交失败：%w", err)

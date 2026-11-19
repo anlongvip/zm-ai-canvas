@@ -45,6 +45,7 @@ var videoReferenceReaders = map[string]videoReferenceReader{
 	"multipart-references":        multipartReferences,
 	"media-tokens":                explicitTokenReferences,
 	"indexed-images":              indexedReferences,
+	"workflow-node-slots":         workflowNodeSlotReferences,
 }
 
 func (rule VideoReferenceContract) valid() bool {
@@ -272,6 +273,38 @@ func indexedReferences(body map[string]any, _ []RequestFilePart) (videoWirePromp
 			return wire, fmt.Errorf("视频工作流的参考图片槽位 %s 缺失或无效", field)
 		}
 		wire.slots[index].value = value
+	}
+	return wire, nil
+}
+
+// workflowNodeSlotReferences 读取 RunningHub 一类 nodeInfoList 工作流的参考图槽位：
+// 提示词写在 fieldName=text 的节点里，图片按 fieldName=image 的节点顺序占位，空槽位发 "None"。
+// 编号即槽位顺序，因此 Bind 只改写提示词节点，不动槽位字段。
+func workflowNodeSlotReferences(body map[string]any, _ []RequestFilePart) (videoWirePrompt, error) {
+	wire := videoWirePrompt{key: "fieldValue"}
+	items, _ := body["nodeInfoList"].([]any)
+	for _, raw := range items {
+		item, _ := raw.(map[string]any)
+		if item == nil {
+			continue
+		}
+		field, _ := item["fieldName"].(string)
+		value, _ := item["fieldValue"].(string)
+		switch strings.TrimSpace(field) {
+		case "text":
+			if wire.body != nil {
+				return wire, errors.New("视频工作流提示词节点不唯一，无法核对参考图编号")
+			}
+			wire.body = item
+		case "image":
+			if strings.TrimSpace(value) == "" || strings.TrimSpace(value) == "None" {
+				continue
+			}
+			wire.slots = append(wire.slots, videoImageSlot{value: strings.TrimSpace(value), role: "reference_image"})
+		}
+	}
+	if wire.body == nil {
+		return wire, errors.New("视频工作流缺少提示词节点，无法核对参考图编号")
 	}
 	return wire, nil
 }

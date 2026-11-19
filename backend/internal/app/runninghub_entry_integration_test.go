@@ -346,6 +346,16 @@ func TestRunningHubEntryIntegrationDrama(t *testing.T) {
 		t.Fatalf("drama did not dispatch real generation task: %#v %v", jobs, err)
 	}
 	task := f.assertCompleted(t, jobs[0].TaskID, "plus")
+	var upstreamPrompt string
+	for _, node := range f.submits[0].NodeInfoList {
+		if node.NodeID == "263" && node.FieldName == "text" {
+			upstreamPrompt, _ = node.FieldValue.(string)
+			break
+		}
+	}
+	if !strings.Contains(upstreamPrompt, "参考图1：Sphere") {
+		t.Fatalf("RunningHub prompt lost its reference image binding: %q", upstreamPrompt)
+	}
 	resourceID, _ := taskOutputResource(task.ResultJSON, task.Type)
 	f.s.dramaTailFrameHook = func(userID, id string) (string, error) {
 		if userID != "user" || id != resourceID {

@@ -327,6 +327,9 @@ func NormalizeModelCapabilityConfigForModel(capability string, protocol string, 
 			resolvedVideo.referenceContract = adapter.Metadata().VideoReferences
 		}
 	}
+	if strings.TrimSpace(protocol) == string(model.ChannelInterfaceRunningHubVideo) {
+		resolvedVideo.referenceContract = runningHubVideoReferenceContract()
+	}
 	value := &ModelCapabilityConfig{Version: 1, MediaTransport: transport, Video: &resolvedVideo}
 	if err := validateVideoCapabilityConfig(value.Video); err != nil {
 		return nil, err
