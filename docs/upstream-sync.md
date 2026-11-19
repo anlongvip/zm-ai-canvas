@@ -60,6 +60,10 @@ git push origin HEAD && git push origin vX.Y.Z.N
 - 只用正式版本号：Host Updater 会跳过 GitHub 上的 prerelease，带 `-rc` / `-beta` 的标签发布后后台检测不到。
 - 脚本只提交 `VERSION` 与 `CHANGELOG.md`，不夹带其他改动。
 
+## v1.8.7 同步记录
+
+合并作者主线 `f33c39c0..6e82753e`（26 个提交、489 个变更文件），Schema 105 → 108。保留 RunningHub 算力档位、按实际运行时间结算和重复退款防护。短剧参考图按 RunningHub 实际发送的图片槽位校验，兼容已安装的旧插件包。
+
 ## 备份与镜像保留
 
 Host Updater 升级成功后会执行保留策略（`backend/internal/hostupdate/retention.go`），避免每次全量备份和旧镜像把磁盘写满：
