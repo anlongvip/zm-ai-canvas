@@ -170,7 +170,7 @@ func TestRunningHubSystemCancellationWaitsForConfirmedTerminalStatus(t *testing.
 			defer server.Close()
 			input := canvasGenerationInput{Config: providerConfig{ChannelID: "rh-channel", InterfaceType: "runninghub-workflow-video", BaseURL: server.URL, APIKey: "test-key"}}
 			svc := &Service{}
-			if !svc.supportsProviderCancellation(input.Config.InterfaceType) {
+			if !canCancelProviderConfig(input.Config) {
 				t.Fatal("system cancellation must be supported")
 			}
 			if err := svc.cancelProviderTask(t.Context(), input, "original-task"); err != nil {

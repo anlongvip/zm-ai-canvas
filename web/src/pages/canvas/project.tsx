@@ -9,6 +9,7 @@ import { useCanvasImageLayerMaterials } from "./use-canvas-image-layer-materials
 import { isCanvasNodeGenerating } from "@/lib/canvas/canvas-node-task-state";
 import { createCanvasStateWriter } from "@/lib/canvas/canvas-editor-state";
 import { canCancelGenerationTask } from "@/lib/generation-task-display";
+import { generationErrorMessage } from "@/lib/generation-error";
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -126,6 +127,9 @@ import {
 import { resolveCanvasEmptyStateKind } from "@/lib/canvas/canvas-starter";
 import { failedImageBatchChildren, markImageBatchRetrying, reconcileImageBatchRoot, restoreUnsubmittedImageBatchChild } from "@/lib/canvas/canvas-image-batch-retry";
 import { cinematicStoryboardColumns, createCanvasNode, getInputSummary, isHiddenBatchChild } from "@/lib/canvas/canvas-project-domain";
+import { buildVideoRemakeDraft } from "@/lib/canvas/canvas-video-remake";
+import { findAvailableGenerationGroupPosition } from "@/lib/canvas/canvas-generation-layout";
+import { IMAGE_NODE_MAX_SIZE } from "@/lib/canvas/canvas-node-size";
 import { bindStoryboardKeyframes, storyboardKeyframeTime, storyboardRowsFromBatchTable } from "@/lib/canvas/canvas-batch-storyboard";
 import { stampCanvasNodeChanges, updateCanvasNode, updateCanvasNodes } from "@/lib/canvas/canvas-node-timestamps";
 import { canvasAssetHandoffAttempt, finalizeCanvasAssetHandoff, uninsertedCanvasAssetHandoffPayloads } from "@/lib/canvas/canvas-asset-handoff";
@@ -824,6 +828,19 @@ function CanvasViewportPage() {
         setDialogNodeId,
     });
     const replaceCanvasNodeMedia = useCallback((node: CanvasNodeData) => handleUploadRequest(node.id), [handleUploadRequest]);
+    const remakeVideo = useCallback(
+        (source: CanvasNodeData) => {
+            try {
+                const draft = buildVideoRemakeDraft(source.id, nodesRef.current, connectionsRef.current, effectiveConfig);
+                setNodes(draft.nodes);
+                setConnections(draft.connections);
+                focusCanvasNode(draft.target.id);
+            } catch (error) {
+                message.error(generationErrorMessage(error));
+            }
+        },
+        [connectionsRef, effectiveConfig, focusCanvasNode, message, nodesRef, setConnections, setNodes],
+    );
     const { actions: batchReferences, pickerModal: batchReferencePickerModal } = useCanvasBatchReferences({ nodesRef, connectionsRef, setNodes, setConnections, createFileNode });
     const { rotateImageNode, rotatingNodeId } = useCanvasImageRotation({ projectId, nodesRef, setNodes, setConnections, setSelectedNodeIds, readOnly: false });
     const { projectAssetOpen, projectAssetInitialCategory, projectAssetInitialFolderId, projectAssetInsertPosition, handleProjectAssetSelection, openProjectAssets, closeProjectAssets } = useCanvasProjectAssetPicker({
@@ -1040,6 +1057,7 @@ function CanvasViewportPage() {
         copyNodesToClipboard,
         copySelectedNodes,
         createFolder,
+        createFrameAroundSelection,
         createNode,
         createReferenceGroup,
         createStoryboardGroup,
@@ -1124,16 +1142,24 @@ function CanvasViewportPage() {
     );
 
     const handleReplaceNodeReferenceFiles = useCallback(
-        (_targetNodeId: string, oldReference: { id: string; nodeId?: string; label?: string; title?: string }, files: File[]) => {
+        async (targetNodeId: string, oldReference: { id: string; nodeId?: string; label?: string; title?: string }, files: File[]) => {
             const file = files.find((f) => f.type.startsWith("image/"));
             if (!file || !oldReference.nodeId) return;
-            void replaceNodeMedia(oldReference.nodeId, file).then((success: boolean) => {
-                if (success) {
-                    message.success("参考图片已替换");
+            const target = nodesRef.current.find((node) => node.id === targetNodeId);
+            if (target?.metadata?.videoRemake) {
+                const area = findAvailableGenerationGroupPosition(nodesRef.current, { x: target.position.x - IMAGE_NODE_MAX_SIZE.width - 96, y: target.position.y }, IMAGE_NODE_MAX_SIZE);
+                const newImageId = await createFileNode(file, { x: area.x + IMAGE_NODE_MAX_SIZE.width / 2, y: area.y + IMAGE_NODE_MAX_SIZE.height / 2 }, undefined, { preserveSelection: true });
+                if (!newImageId) return;
+                if (!connectionsRef.current.some((edge) => edge.toNodeId === targetNodeId && edge.fromNodeId === oldReference.nodeId)) {
+                    message.warning("新图片已加入画布。原引用已变化，请重新连接");
+                    return;
                 }
-            });
+                handleReplaceNodeReference(targetNodeId, oldReference, newImageId);
+                return;
+            }
+            if (await replaceNodeMedia(oldReference.nodeId, file)) message.success("参考图片已替换");
         },
-        [message, replaceNodeMedia],
+        [connectionsRef, createFileNode, handleReplaceNodeReference, message, nodesRef, replaceNodeMedia],
     );
 
     const {
@@ -1238,6 +1264,7 @@ function CanvasViewportPage() {
             const node = nodesRef.current.find((item) => item.id === nodeId);
             if (
                 !node ||
+                node.type === CanvasNodeType.Frame ||
                 node.type === CanvasNodeType.Script ||
                 node.type === CanvasNodeType.Drawing ||
                 node.type === CanvasNodeType.Panorama ||
@@ -2257,6 +2284,12 @@ function CanvasViewportPage() {
     const renderCanvasNodePanel = useCallback(
         (panelNode: CanvasNodeData) => {
             if (panelNode.type === CanvasNodeType.Script || panelNode.type === CanvasNodeType.Drawing) return null;
+            const emptyRemakeImage = panelNode.metadata?.videoRemake
+                ? connectionsRef.current
+                      .filter((edge) => edge.toNodeId === panelNode.id)
+                      .map((edge) => nodeById.get(edge.fromNodeId))
+                      .find((node) => node?.type === CanvasNodeType.Image && !node.metadata?.content && !node.metadata?.storageKey && !node.metadata?.locked && node.metadata?.fileUpload !== "uploading")
+                : undefined;
             return panelNode.type === CanvasNodeType.Config ? (
                 <CanvasConfigComposer
                     nodeId={panelNode.id}
@@ -2304,6 +2337,7 @@ function CanvasViewportPage() {
                     onReorderReferences={handleReorderNodeReferences}
                     onReplaceReference={handleReplaceNodeReference}
                     onReplaceReferenceFiles={handleReplaceNodeReferenceFiles}
+                    onUploadRemakeImage={emptyRemakeImage ? () => handleUploadRequest(emptyRemakeImage.id, undefined, { preserveSelection: true }) : undefined}
                     onClose={() => setDialogNodeId(null)}
                     onNodeMouseDown={handleNodeMouseDown}
                     workspaceMode={workspaceMode}
@@ -2339,8 +2373,10 @@ function CanvasViewportPage() {
             handleReorderNodeReferences,
             handleReplaceNodeReference,
             handleReplaceNodeReferenceFiles,
+            handleUploadRequest,
             mentionReferencesByNodeId,
             message,
+            nodeById,
             projectId,
             runningNodeId,
             setConnections,
@@ -3315,6 +3351,7 @@ function CanvasViewportPage() {
                                     onAlign={alignSelectedNodes}
                                     onArrange={arrangeSelectedNodes}
                                     onCreateStoryboard={createStoryboardGroup}
+                                    onCreateFrame={createFrameAroundSelection}
                                     onCreateReferenceGroup={createReferenceGroup}
                                     onBatchConnect={() => beginBatchConnectionMode(batchSourceNodeIds)}
                                     onCompareImages={selectedNodeIds.size === 2 && selectionImages.length === 2 ? () => setComparedImageIds(selectionImages.map((node) => node.id)) : undefined}
@@ -3386,6 +3423,7 @@ function CanvasViewportPage() {
                                 onViewImage={(node) => setPreviewNodeId(node.id)}
                                 onExtractVideoFrames={openVideoFrameExtractor}
                                 onExtractAudioFromVideo={(node) => void extractAudioFromVideo(node)}
+                                onRemakeVideo={remakeVideo}
                                 onTrimVideoSegments={openVideoSegmentExtractor}
                                 onEnhanceVideo={videoProcessingModels.enhance.length ? (node) => openVideoProcessing(node, "enhance") : undefined}
                                 onDepthVideo={videoProcessingModels.depth.length ? (node) => openVideoProcessing(node, "depth") : undefined}
@@ -3472,6 +3510,31 @@ function CanvasViewportPage() {
                                 }}
                                 onUploadToArkPrivateAsset={confirmUploadNodeImageToArkPrivateAsset}
                                 onSetAssetCategory={(nodeId, assetCategory) => handleConfigNodeChange(nodeId, { assetCategory })}
+                                onSetFrameColor={(nodeId, color) => {
+                                    const target = nodesRef.current.find((item) => item.id === nodeId);
+                                    if (!target || target.type !== CanvasNodeType.Frame || target.metadata?.folder) return;
+                                    setNodes((current) => {
+                                        const next = current.map((item) =>
+                                            item.id === nodeId
+                                                ? {
+                                                      ...item,
+                                                      metadata: {
+                                                          ...item.metadata,
+                                                          frame: {
+                                                              ...item.metadata?.frame,
+                                                              collapsed: Boolean(item.metadata?.frame?.collapsed),
+                                                              expandedWidth: item.metadata?.frame?.expandedWidth || item.width,
+                                                              expandedHeight: item.metadata?.frame?.expandedHeight || item.height,
+                                                              color,
+                                                          },
+                                                      },
+                                                  }
+                                                : item,
+                                        );
+                                        nodesRef.current = next;
+                                        return next;
+                                    });
+                                }}
                                 onToggleFrame={(node) => handleFrameToggle(node.id)}
                                 onSpreadSelection={spreadSelectedNodes}
                                 onCopySelection={copySelectedNodes}

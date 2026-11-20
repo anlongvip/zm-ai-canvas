@@ -338,7 +338,7 @@ func TestRunningHubEntryIntegrationDrama(t *testing.T) {
 	if err := f.s.repo.CreateDramaJobs(run.newJobs); err != nil {
 		t.Fatal(err)
 	}
-	if err := run.dispatch(); err != nil {
+	if err := run.dispatch(true); err != nil {
 		t.Fatal(err)
 	}
 	jobs, err := f.s.repo.DramaJobsByStatus(project.ID, model.DramaJobRunning)
