@@ -37,6 +37,11 @@ export function isActiveWorkbenchTask(task: Pick<GenerationTask, "status">) {
     return task.status === "queued" || task.status === "running";
 }
 
+export function workbenchTaskNeedsAssetMaterialization(task: Pick<GenerationTask, "status" | "resultJson" | "previewUrl" | "outputs">) {
+    if (task.status !== "succeeded" || (!task.resultJson && !task.previewUrl)) return false;
+    return !task.outputs?.length || task.outputs.some((output) => !output.materializedAssetId);
+}
+
 export function workbenchTaskStateLabel(task: Pick<GenerationTask, "status" | "stage" | "error">) {
     if (task.status === "queued") return "排队中";
     if (task.status === "running") return task.stage || "生成中";

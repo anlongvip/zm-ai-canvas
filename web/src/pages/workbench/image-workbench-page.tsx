@@ -27,6 +27,7 @@ import { quoteModel } from "@/services/api/logical-models";
 import { resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
 import { cancelGenerationTask, createGenerationTask, queryGenerationTask, retryGenerationTask, type GenerationTask } from "@/services/api/task-center";
 import { capabilitySupportedModes, createWorkbenchTask, listWorkbenchTasks, listWorkbenchTools, resolveWorkbenchResourceURL, type WorkbenchKind, type WorkbenchPromptPreset, type WorkbenchReferenceSlot, type WorkbenchTool } from "@/services/api/workbench";
+import { materializeGenerationTaskAssets } from "@/services/project-asset-sync";
 import { useCreationPreferencesStore } from "@/stores/use-creation-preferences-store";
 import { logicalModelIDForConfig, modelDisplayName, modelOptionName, resolveModelChannel, resolveModelRequestConfig, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
@@ -39,6 +40,7 @@ import {
     workbenchBatchLimit,
     workbenchDownloadName,
     workbenchParameterSummary,
+    workbenchTaskNeedsAssetMaterialization,
     workbenchTaskOutputs,
     workbenchTaskSnapshot,
     type WorkbenchOutput,
@@ -205,6 +207,8 @@ export function WorkbenchPage({ kind }: { kind: WorkbenchKind }) {
     const detailQueueRef = useRef<Array<{ id: string; version: string }>>([]);
     const detailInflightRef = useRef(new Set<string>());
     const detailFailedRef = useRef(new Map<string, string>());
+    const assetMaterializationInflightRef = useRef(new Set<string>());
+    const assetMaterializationFailedRef = useRef(new Map<string, string>());
     const detailActiveRef = useRef(0);
     const [visibleBatchKeys, setVisibleBatchKeys] = useState<ReadonlySet<string>>(() => new Set());
     const [measuredRatios, setMeasuredRatios] = useState<Record<string, number>>({});
@@ -515,6 +519,30 @@ export function WorkbenchPage({ kind }: { kind: WorkbenchKind }) {
         },
         [],
     );
+
+    useEffect(() => {
+        for (const task of Object.values(details)) {
+            if (!workbenchTaskNeedsAssetMaterialization(task) || assetMaterializationInflightRef.current.has(task.id) || assetMaterializationFailedRef.current.get(task.id) === task.updatedAt) continue;
+            assetMaterializationInflightRef.current.add(task.id);
+            void materializeGenerationTaskAssets(task)
+                .then((materialized) => {
+                    if (!materialized.outputs?.some((output) => output.materializedAssetId)) throw new Error("生成已完成，但没有可登记的素材");
+                    setDetails((current) => ({
+                        ...current,
+                        [task.id]: {
+                            ...(current[task.id] || task),
+                            outputs: materialized.outputs,
+                            resultState: materialized.resultState,
+                        },
+                    }));
+                })
+                .catch((error) => {
+                    assetMaterializationFailedRef.current.set(task.id, task.updatedAt);
+                    if (!(error instanceof DOMException && error.name === "AbortError")) message.error(`作品保存到素材库失败：${errorMessage(error, "请刷新作品后重试")}`);
+                })
+                .finally(() => assetMaterializationInflightRef.current.delete(task.id));
+        }
+    }, [details, message]);
 
     const receiptTasks = useMemo(() => localBatches.flatMap((batch) => Object.values(batch.receipts)).filter((receipt) => !taskIds.has(receipt.id)), [localBatches, taskIds]);
     const groups = useMemo(() => groupWorkbenchTasks([...tasks, ...receiptTasks]), [receiptTasks, tasks]);
