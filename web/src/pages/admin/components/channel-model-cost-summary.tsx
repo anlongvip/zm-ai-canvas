@@ -10,7 +10,7 @@ export function ChannelModelCostSummary({ item }: { item: ChannelModel }) {
     const renderTier = (tier: ChannelModelPriceTier) => (
         <div className="admin-model-cost-tier" key={tier.id}>
             <div className="admin-model-cost-spec">{specificationLabel(tier)}</div>
-            <div className="admin-model-cost-value">{priceLabel(tier, item.capability, item.priceCurrency)}</div>
+            <div className="admin-model-cost-value">{priceLabel(tier, item.capability, item.priceCurrency, item.protocol)}</div>
         </div>
     );
     return (
@@ -26,7 +26,7 @@ export function ChannelModelCostSummary({ item }: { item: ChannelModel }) {
     );
 }
 
-function priceLabel(tier: ChannelModelPriceTier, capability: ChannelModel["capability"], currency?: ChannelModel["priceCurrency"]) {
+function priceLabel(tier: ChannelModelPriceTier, capability: ChannelModel["capability"], currency?: ChannelModel["priceCurrency"], protocol?: ChannelModel["protocol"]) {
     const saleUnit = priceCurrencyUnit(currency);
     if (tier.billingMode === "image_usage" && tier.imagePricing) {
         const pricing = tier.imagePricing;
@@ -54,7 +54,9 @@ function priceLabel(tier: ChannelModelPriceTier, capability: ChannelModel["capab
                     {tier.costPricing?.configured ? formatModelPrice(cost) : "未配置成本"} / {tier.priceConfigured ? formatModelPrice(sale) : "未配置售价"}
                 </span>
                 {/* 货币计价时售价与积分成本单位不同，加价率依赖分组兑换比例，不在这里推算。 */}
-                <span className="admin-model-cost-unit">{saleUnit === "积分" ? `积分 / ${unit} · 加价 ${formatModelMarkup(cost, sale)}` : `成本积分 / 售价 ${saleUnit} · 每${unit}`}</span>
+                <span className="admin-model-cost-unit">
+                    {protocol === "runninghub-workflow-video" ? "成本积分 / 秒 · 售价按次（历史按秒档需重新定价）" : saleUnit === "积分" ? `积分 / ${unit} · 加价 ${formatModelMarkup(cost, sale)}` : `成本积分 / 售价 ${saleUnit} · 每${unit}`}
+                </span>
             </div>
         );
     });

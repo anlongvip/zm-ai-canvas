@@ -7,12 +7,15 @@ export function CreditCostFields({
     form,
     billingMode,
     isVideo,
+    costBillingMode = billingMode,
     referenceVideoBilling = false,
 }: {
     index: number;
     form: FormInstance<ChannelModelFormValues>;
     billingMode: string;
     isVideo: boolean;
+    /** RunningHub 的销售价按次，但上游成本仍按真实运行秒数记录。 */
+    costBillingMode?: string;
     /** 视频模型开启参考视频计费时，按秒档和视频 Token 档另填一套带参考视频的成本价；按次档不需要。 */
     referenceVideoBilling?: boolean;
 }) {
@@ -28,7 +31,7 @@ export function CreditCostFields({
                       ["costCachedTokenPrice", "缓存命中 / 百万 Token"],
                       ["costCacheWriteTokenPrice", "缓存写入 / 百万 Token"],
                   ]
-            : [["costUnitPrice", billingMode === "per_second" ? "积分 / 秒" : "积分 / 次"], ...(referenceVideoCost ? [["costReferenceVideoUnitPrice", "带参考视频 积分 / 秒"]] : [])];
+            : [["costUnitPrice", costBillingMode === "per_second" ? "积分 / 秒" : "积分 / 次"], ...(referenceVideoCost ? [["costReferenceVideoUnitPrice", "带参考视频 积分 / 秒"]] : [])];
     return (
         <section className="admin-price-tier-cost-panel" aria-label="积分成本设置">
             <header className="admin-price-tier-cost-header">
@@ -37,7 +40,13 @@ export function CreditCostFields({
                         <span>积分成本</span>
                         <span className="admin-price-tier-cost-badge">仅管理员可见</span>
                     </div>
-                    <p>{referenceVideoCost ? "按当前计费方式填写成本；挂参考视频的请求使用带参考视频成本价。不影响用户售价。" : "按当前计费方式填写成本，不影响用户售价。"}</p>
+                    <p>
+                        {referenceVideoCost
+                            ? "按当前计费方式填写成本；挂参考视频的请求使用带参考视频成本价。不影响用户售价。"
+                            : costBillingMode !== billingMode
+                              ? "RunningHub 上游成本按实际运行秒数填写；客户售价按次收取。"
+                              : "按当前计费方式填写成本，不影响用户售价。"}
+                    </p>
                 </div>
                 <Form.Item className="admin-price-tier-cost-switch mb-0" name={[index, "costConfigured"]} valuePropName="checked">
                     <Switch aria-label="配置积分成本价" />

@@ -96,7 +96,7 @@ func TestRunningHubInternalCancellationReconcilesBilling(t *testing.T) {
 				t.Fatalf("internal cancellation: %#v %v", cancelled, err)
 			}
 			order, err := f.s.repo.BillingOrder(task.BillingOrderID)
-			if err != nil || order.Status != model.BillingStatusReserved || order.ReservedAmountMicrocredits != f.sale*5 {
+			if err != nil || order.Status != model.BillingStatusReserved || order.ReservedAmountMicrocredits != f.sale || order.Quantity != 1 {
 				t.Fatalf("cancel acceptance must not refund: %#v %v", order, err)
 			}
 			stored, err := f.s.repo.Task(task.ID)
@@ -130,19 +130,19 @@ func TestRunningHubInternalCancellationReconcilesBilling(t *testing.T) {
 					t.Fatal("confirmed cancellation must preserve confirmation time")
 				}
 			case "SUCCESS":
-				wantStatus, wantAvailable = model.BillingStatusSettled, 10_000_000-f.sale*82
+				wantStatus, wantAvailable = model.BillingStatusSettled, 10_000_000-f.sale
 				cost, err := billingCreditCost(*order)
-				if err != nil || cost == nil || *cost != f.cost*82 || order.Quantity != 82 || order.CostQuantity != 82 {
+				if err != nil || cost == nil || *cost != f.cost*82 || order.Quantity != 1 || order.CostQuantity != 82 || order.ActualAmountMicrocredits != f.sale {
 					t.Fatalf("completed task must settle actual runtime and cost: order=%#v cost=%v err=%v", order, cost, err)
 				}
 			case "RUNNING":
 				wantCancelStatus = model.ProviderCancelStatusRequested
-				wantStatus, wantAvailable, wantReserved = model.BillingStatusReserved, 10_000_000-f.sale*5, f.sale*5
+				wantStatus, wantAvailable, wantReserved = model.BillingStatusReserved, 10_000_000-f.sale, f.sale
 				if order.Status == model.BillingStatusSettled || order.Status == model.BillingStatusRefunded || stored.ProviderCancelStatus != model.ProviderCancelStatusRequested || stored.ProviderCancelNextCheckAt == nil {
 					t.Fatalf("running task must remain reserved and scheduled: %#v %#v", stored, order)
 				}
 			case "missing":
-				wantStatus, wantAvailable, wantReserved = model.BillingStatusUncertain, 10_000_000-f.sale*5, f.sale*5
+				wantStatus, wantAvailable, wantReserved = model.BillingStatusUncertain, 10_000_000-f.sale, f.sale
 				if stored.ProviderCancelStatus != model.ProviderCancelStatusUncertain || stored.ProviderCancelNextCheckAt != nil {
 					t.Fatalf("missing task must stop automatic reconciliation: %#v", stored)
 				}

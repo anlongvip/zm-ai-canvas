@@ -312,7 +312,16 @@ func (s *Service) switchTaskToNextRoute(task *model.Task, attempts []model.Route
 	} else if task.BillingOrderID != "" {
 		config, _ := nextInput["config"].(map[string]any)
 		capability := selected.ChannelModel.Capability
-		snapshotCreditCost(&costOrder, channelModelPriceTierForIntent(selected.ChannelModel, intent, selected.CapabilitySpec), requestedBillingQuantity(capability, config), estimateTaskBillingTokens(nextInput, capability))
+		if selected.ChannelModel.Protocol == model.ChannelInterfaceRunningHubVideo {
+			current, err := s.repo.BillingOrder(task.BillingOrderID)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateRunningHubSale(selected.ChannelModel.Protocol, current.BillingMode, current.AmountMicrocredits); err != nil {
+				return nil, err
+			}
+		}
+		snapshotChannelCreditCost(&costOrder, selected.ChannelModel.Protocol, channelModelPriceTierForIntent(selected.ChannelModel, intent, selected.CapabilitySpec), requestedBillingQuantity(capability, config), estimateTaskBillingTokens(nextInput, capability))
 	}
 	if err := s.repo.SwitchTaskLogicalRoute(task.ID, previousRouteID, selected.Route.ID, string(encoded), task.BillingOrderID, selected.ChannelModel.ChannelID, selected.ChannelModel.ID, replacement, costOrder.BillingCostSnapshot, binding); err != nil {
 		if errors.Is(err, repository.ErrInsufficientCredits) {

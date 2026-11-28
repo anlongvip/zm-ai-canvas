@@ -51,6 +51,7 @@ export function PriceTierFields({
     const isVideo = capability === "video";
     const isAudio = capability === "audio";
     const isDurationPriced = isVideo || isAudio;
+    const isRunningHubVideo = protocol === "runninghub-workflow-video";
     const isImage = capability === "image";
     const referenceVideoBillingValue = Form.useWatch("referenceVideoBilling", form);
     const referenceVideoBilling = isVideo && referenceVideoBillingValue === true;
@@ -58,6 +59,15 @@ export function PriceTierFields({
     const watchedTier = Form.useWatch(["priceTiers", index], form);
     const amountsComplete = Boolean(watchedTier && priceTierAmountsComplete(capability, watchedTier, referenceVideoBilling));
     const requirePrice = priceConfigured || tierEnabled;
+    const handleBillingModeChange = (nextMode: string) => {
+        onDirty();
+        if (isRunningHubVideo && nextMode !== "fixed_request") return;
+        form.setFieldValue(["priceTiers", index, "billingMode"], nextMode);
+        if (nextMode === "fixed_request") {
+            // 不把历史按秒单价误当成新的按次售价。
+            form.setFieldValue(["priceTiers", index, "unitPrice"], undefined);
+        }
+    };
     return (
         <article className="admin-price-tier-card">
             <header className="admin-price-tier-card-header">
@@ -102,6 +112,9 @@ export function PriceTierFields({
                             <h3>适用范围</h3>
                             <p>选择全部请求，或按生成规格精确匹配。</p>
                         </div>
+                        {isRunningHubVideo && billingMode === "per_second" ? (
+                            <Alert className="admin-price-tier-alert" type="warning" showIcon title="RunningHub 历史档位仍为按秒收费" description="新提交的 RunningHub 订单必须按次收费。请重新填写每次售价并保存；历史按秒价格不会自动换算。" />
+                        ) : null}
                     </div>
                     <Form.Item className="admin-price-tier-mode-control mb-0" name={[index, "matchMode"]} rules={[{ required: true }]}>
                         <Segmented
@@ -186,9 +199,10 @@ export function PriceTierFields({
                                     options={[
                                         { label: "按次", value: "fixed_request" },
                                         ...(isImage ? [{ label: "图片用量", value: "image_usage" }] : []),
-                                        { label: "按秒", value: "per_second", disabled: !isDurationPriced },
-                                        { label: isVideo ? "视频 Token" : "Token", value: "token", disabled: !tokenEnabled },
+                                        { label: "按秒", value: "per_second", disabled: !isDurationPriced || isRunningHubVideo },
+                                        { label: isVideo ? "视频 Token" : "Token", value: "token", disabled: !tokenEnabled || isRunningHubVideo },
                                     ]}
+                                    onChange={handleBillingModeChange}
                                 />
                             </Form.Item>
                             {billingMode === "image_usage" ? (
@@ -225,7 +239,12 @@ export function PriceTierFields({
                                     className="admin-price-tier-unit-price mb-0"
                                     name={[index, "unitPrice"]}
                                     label={billingMode === "per_second" ? `每秒售价（${priceUnit}）` : `每次售价（${priceUnit}）`}
-                                    rules={[{ required: requirePrice, message: "请输入售价" }]}
+                                    rules={[
+                                        { required: requirePrice, message: "请输入售价" },
+                                        ...(isRunningHubVideo && billingMode === "fixed_request" && requirePrice
+                                            ? [{ validator: (_rule: unknown, value: number | undefined) => (typeof value === "number" && value > 0 ? Promise.resolve() : Promise.reject(new Error("RunningHub 每次售价必须大于 0"))) }]
+                                            : []),
+                                    ]}
                                 >
                                     <InputNumber className="w-full" min={0} max={1_000_000} precision={6} step={0.1} />
                                 </Form.Item>
@@ -253,7 +272,7 @@ export function PriceTierFields({
                                 </span>
                             </div>
                         ) : null}
-                        <CreditCostFields index={index} form={form} billingMode={billingMode} isVideo={isVideo} referenceVideoBilling={referenceVideoBilling} />
+                        <CreditCostFields index={index} form={form} billingMode={billingMode} costBillingMode={isRunningHubVideo ? "per_second" : billingMode} isVideo={isVideo} referenceVideoBilling={referenceVideoBilling} />
                     </section>
                 </div>
                 {staleTierUpstream ? (

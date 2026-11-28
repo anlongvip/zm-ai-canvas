@@ -7,6 +7,27 @@ import (
 	"testing"
 )
 
+func TestBuildVideoInputsDurationLimit(t *testing.T) {
+	input := VideoInputs{Prompt: "test", Duration: 15, AspectRatio: "16:9", Megapixels: 0.9}
+	nodes, err := BuildVideoInputs(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, node := range nodes {
+		if node.NodeID == "259" && node.FieldName == "value" && node.FieldValue == 15 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing duration at node 259: %#v", nodes)
+	}
+	input.Duration = 16
+	if _, err := BuildVideoInputs(input); err == nil {
+		t.Fatal("16 seconds accepted")
+	}
+}
+
 func TestResponseRejectsMissingTaskAfterCancellation(t *testing.T) {
 	err := ValidateResponse(Response{TaskID: "cancelled-live-task", ErrorCode: "1004"})
 	if !errors.Is(err, ErrTaskNotFound) {

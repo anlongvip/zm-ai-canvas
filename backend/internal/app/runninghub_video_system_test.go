@@ -44,7 +44,7 @@ func TestRunningHubSystemVideoUploadsReferencesWithSubmissionKey(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Error(err)
 			}
-			if body.InstanceType != "plus" {
+			if body.InstanceType != "default" {
 				t.Errorf("instance = %q", body.InstanceType)
 			}
 			want := map[string]any{"51.image": "openapi/first.png", "49.image": "openapi/second.png", "27.video": "openapi/clip.mp4", "48.audio": "openapi/sound.wav", "252.megapixels": "1.5"}
@@ -113,6 +113,7 @@ func TestRunningHubSystemVideoResumeNeverUploadsOrResubmits(t *testing.T) {
 
 func TestRunningHubSystemVideoRejectsInvalidOptionsBeforeUpload(t *testing.T) {
 	for _, tc := range []struct{ name, seconds, ratio, resolution, tier string }{
+		{"excess duration", "16", "16:9", "0.9", "standard"},
 		{"fractional duration", "1.5", "16:9", "0.9", ""}, {"unsupported ratio", "5", "5:7", "0.9", ""},
 		{"unsupported resolution", "5", "16:9", "bogus", ""}, {"unsupported compute", "5", "16:9", "0.9", "lite"},
 	} {

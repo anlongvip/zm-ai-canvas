@@ -220,7 +220,8 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 	}
 	switch model.ChannelInterfaceType(protocol) {
 	case model.ChannelInterfaceRunningHubVideo:
-		// 智墨当前 RunningHub Workflow：1-20 秒，支持多参考图/视频/音频；
+		video.ExecutionTier = "standard"
+		// 智墨当前 RunningHub Workflow：1-15 秒，固定 Standard 算力，支持多参考图/视频/音频；
 		// 分辨率值对应工作流的 megapixels，而不是供应商的固定清晰度名称。
 		video.References.MaxImages = 9
 		video.References.MaxImageBytes = 30 * 1024 * 1024
@@ -230,7 +231,7 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 		video.References.MaxAudios = 3
 		video.References.MaxAudioBytes = 15 * 1024 * 1024
 		video.References.MaxAudioDuration = 15
-		video.Duration = VideoDurationConfig{Selection: "range", Min: 1, Max: 20, Step: 1, Default: 5}
+		video.Duration = VideoDurationConfig{Selection: "range", Min: 1, Max: 15, Step: 1, Default: 5}
 		video.Ratios = []string{"16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
 		video.DefaultRatio = "16:9"
 		video.Resolutions = []string{"0.5", "0.9", "1.5", "2.0"}

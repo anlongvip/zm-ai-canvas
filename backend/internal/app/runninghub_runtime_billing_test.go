@@ -18,9 +18,10 @@ import (
 func newRunningHubBillingFixture(t *testing.T, quantity, available, multiplier int64) (*Service, *gorm.DB, *model.Task) {
 	t.Helper()
 	db := newSQLiteTestDB(t)
-	if err := db.AutoMigrate(&model.Task{}, &model.BillingOrder{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.ApiCallLog{}); err != nil {
+	if err := db.AutoMigrate(&model.Task{}, &model.BillingOrder{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.ApiCallLog{}, &model.SystemSetting{}); err != nil {
 		t.Fatal(err)
 	}
+	ensureTestUsers(t, db, "runtime-user")
 	svc := &Service{repo: repository.New(db)}
 	task := &model.Task{
 		ID: "runtime-task", UserID: "runtime-user", Type: "canvas_video", BillingOrderID: "runtime-order",
@@ -169,7 +170,7 @@ func TestRunningHubSettlementFailureKeepsReservationForReview(t *testing.T) {
 			case "missing result":
 				task.ResultJSON = ""
 			case "invalid mode":
-				db.Model(&model.BillingOrder{}).Where("id = ?", task.BillingOrderID).Update("billing_mode", "fixed_request")
+				db.Model(&model.BillingOrder{}).Where("id = ?", task.BillingOrderID).Update("billing_mode", "token")
 			case "invalid cost mode":
 				db.Model(&model.BillingOrder{}).Where("id = ?", task.BillingOrderID).Update("cost_billing_mode", "fixed_request")
 			case "charge limit":
@@ -439,8 +440,8 @@ func TestRunningHubHourlyPriceUnits(t *testing.T) {
 	}
 }
 
-func TestRunningHubBillingRejectsFixedPriceBeforeReservation(t *testing.T) {
-	for _, mode := range []string{"fixed_request", "token"} {
+func TestRunningHubBillingAllowsFixedPriceAndRejectsOtherModesAndZeroPrice(t *testing.T) {
+	for _, mode := range []string{"fixed_request", "per_second", "token", "zero"} {
 		t.Run(mode, func(t *testing.T) {
 			svc, db, _ := newRunningHubBillingFixture(t, 5, 1_000_000, 10000)
 			if err := db.AutoMigrate(&model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
@@ -451,14 +452,28 @@ func TestRunningHubBillingRejectsFixedPriceBeforeReservation(t *testing.T) {
 			if err := db.Create(&channelModel).Error; err != nil {
 				t.Fatal(err)
 			}
+			billingMode, salePrice := mode, int64(2500)
+			if mode == "zero" {
+				billingMode, salePrice = "fixed_request", 0
+			}
 			tier := model.ChannelModelPriceTier{ID: "rh-tier", ChannelModelID: channelModel.ID, SelectorJSON: `{}`, SelectorKey: "default",
-				Enabled: true, PriceConfigured: true, BillingMode: mode, UnitPriceMicrocredits: 2500}
+				Enabled: true, PriceConfigured: true, BillingMode: billingMode, UnitPriceMicrocredits: salePrice}
 			if err := db.Create(&tier).Error; err != nil {
 				t.Fatal(err)
 			}
 			order, err := svc.newBillingOrderWithPriceTier("runtime-user", "new-task", "new-order", "rh-channel", runninghub.WorkflowID,
 				"video", "canvas_video", 5, tokenBillingEstimate{}, tier.ID)
-			if err == nil || order != nil {
+			if mode == "fixed_request" {
+				if err != nil || order == nil || order.BillingMode != "fixed_request" || order.Quantity != 1 || order.AmountMicrocredits != salePrice {
+					t.Fatalf("fixed RunningHub sale was not snapshotted per request: %#v, %v", order, err)
+				}
+				if err := db.Model(&model.CreditAccount{}).Where("user_id = ?", "runtime-user").Update("available_microcredits", 2499).Error; err != nil {
+					t.Fatal(err)
+				}
+				if err := svc.repo.ReserveBillingOrder(order); !errors.Is(err, repository.ErrInsufficientCredits) {
+					t.Fatalf("fixed-price task passed reservation with insufficient balance: %v", err)
+				}
+			} else if err == nil || order != nil {
 				t.Fatalf("invalid RunningHub sale mode accepted: %#v, %v", order, err)
 			}
 			var count int64
@@ -469,14 +484,15 @@ func TestRunningHubBillingRejectsFixedPriceBeforeReservation(t *testing.T) {
 	}
 }
 
-func TestRunningHubBillingRejectsUnifiedFixedPriceBeforeReservation(t *testing.T) {
+func TestRunningHubBillingAllowsUnifiedFixedPrice(t *testing.T) {
 	svc, db, task := newRunningHubBillingFixture(t, 5, 1_000_000, 10000)
-	if err := db.AutoMigrate(&model.LogicalModel{}, &model.LogicalModelRoute{}, &model.ChannelModel{}); err != nil {
+	if err := db.AutoMigrate(&model.LogicalModel{}, &model.LogicalModelRevision{}, &model.LogicalModelRoute{}, &model.ChannelModel{}); err != nil {
 		t.Fatal(err)
 	}
 	task.LogicalModelID, task.LogicalModelRevisionID, task.RouteID, task.ChannelModelID = "logical-rh", "revision-rh", "route-rh", "channel-rh"
 	for _, row := range []any{
-		&model.LogicalModel{ID: task.LogicalModelID, Enabled: true, Code: "rh-video", ActiveRevisionID: task.LogicalModelRevisionID, PricePolicy: "unified", BillingMode: "fixed_request"},
+		&model.LogicalModel{ID: task.LogicalModelID, Enabled: true, Code: "rh-video", ActiveRevisionID: task.LogicalModelRevisionID, PricePolicy: "unified", BillingMode: "fixed_request", UnitPriceMicrocredits: 2500},
+		&model.LogicalModelRevision{ID: task.LogicalModelRevisionID, LogicalModelID: task.LogicalModelID, Version: 1},
 		&model.LogicalModelRoute{ID: task.RouteID, LogicalModelRevisionID: task.LogicalModelRevisionID, ChannelModelID: task.ChannelModelID},
 		&model.ChannelModel{ID: task.ChannelModelID, Protocol: model.ChannelInterfaceRunningHubVideo, Enabled: true},
 	} {
@@ -485,8 +501,8 @@ func TestRunningHubBillingRejectsUnifiedFixedPriceBeforeReservation(t *testing.T
 		}
 	}
 	order, err := svc.newLogicalModelBillingOrder(task.UserID, task, map[string]any{"mode": "video", "config": map[string]any{"videoSeconds": "5"}})
-	if err == nil || order != nil {
-		t.Fatalf("unified fixed price accepted: %#v, %v", order, err)
+	if err != nil || order == nil || order.BillingMode != "fixed_request" || order.Quantity != 1 || order.AmountMicrocredits != 2500 {
+		t.Fatalf("unified fixed price was not snapshotted per request: %#v, %v", order, err)
 	}
 }
 

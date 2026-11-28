@@ -359,6 +359,26 @@ func NormalizeModelCapabilityConfigForModel(capability string, protocol string, 
 		}
 	}
 	if strings.TrimSpace(protocol) == string(model.ChannelInterfaceRunningHubVideo) {
+		resolvedVideo.ExecutionTier = "standard"
+		// Older saved profiles may still advertise the previous 20-second maximum.
+		duration := &resolvedVideo.Duration
+		if duration.Selection == "range" {
+			duration.Max = min(duration.Max, 15)
+			if duration.Default > duration.Max && duration.Step > 0 && duration.Max >= duration.Min {
+				duration.Default = duration.Min + (duration.Max-duration.Min)/duration.Step*duration.Step
+			}
+		} else if duration.Selection == "enum" {
+			values := make([]int, 0, len(duration.Values))
+			for _, seconds := range duration.Values {
+				if seconds <= 15 {
+					values = append(values, seconds)
+				}
+			}
+			duration.Values = values
+			if duration.Default > 15 && len(values) > 0 {
+				duration.Default = values[0]
+			}
+		}
 		resolvedVideo.referenceContract = runningHubVideoReferenceContract()
 	}
 	value := &ModelCapabilityConfig{Version: 1, MediaTransport: transport, Video: &resolvedVideo}

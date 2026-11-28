@@ -108,8 +108,8 @@ func newRunningHubEntryFixture(t *testing.T, tier string) *runningHubEntryFixtur
 	}
 	for _, row := range []any{
 		&model.SystemSetting{Key: featureAvailabilitySettingKey, ValueJSON: `{"videoWorkbenchEnabled":true}`},
-		&model.ChannelModel{ID: "rh-entry-model", ChannelID: "channel", ModelKey: runninghub.WorkflowID, Capability: "video", Protocol: model.ChannelInterfaceRunningHubVideo, Enabled: true, CapabilityConfigJSON: encoded, BillingMode: "per_second", PriceConfigured: true, UnitPriceMicrocredits: f.sale},
-		&model.ChannelModelPriceTier{ID: "rh-entry-price", ChannelModelID: "rh-entry-model", SelectorKey: "{}", SelectorJSON: "{}", BillingMode: "per_second", UnitPriceMicrocredits: f.sale, PriceConfigured: true, Enabled: true,
+		&model.ChannelModel{ID: "rh-entry-model", ChannelID: "channel", ModelKey: runninghub.WorkflowID, Capability: "video", Protocol: model.ChannelInterfaceRunningHubVideo, Enabled: true, CapabilityConfigJSON: encoded, BillingMode: "fixed_request", PriceConfigured: true, UnitPriceMicrocredits: f.sale},
+		&model.ChannelModelPriceTier{ID: "rh-entry-price", ChannelModelID: "rh-entry-model", SelectorKey: "{}", SelectorJSON: "{}", BillingMode: "fixed_request", UnitPriceMicrocredits: f.sale, PriceConfigured: true, Enabled: true,
 			CostPricing: model.CreditCostPricing{Configured: true, UnitPriceMicrocredits: f.cost}},
 	} {
 		if err := db.Create(row).Error; err != nil {
@@ -174,7 +174,7 @@ func (f *runningHubEntryFixture) assertCompleted(t *testing.T, id, tier string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if order.Status != model.BillingStatusSettled || order.Quantity != 82 || order.CostQuantity != 82 || order.ActualAmountMicrocredits != f.sale*82 || account.AvailableMicrocredits != 10_000_000-f.sale*82 || account.ReservedMicrocredits != 0 {
+	if order.Status != model.BillingStatusSettled || order.BillingMode != "fixed_request" || order.Quantity != 1 || order.CostQuantity != 82 || order.ActualAmountMicrocredits != f.sale || account.AvailableMicrocredits != 10_000_000-f.sale || account.ReservedMicrocredits != 0 {
 		t.Fatalf("entry bypassed runtime settlement: %#v %#v", order, account)
 	}
 	cost, err := billingCreditCost(*order)
@@ -210,7 +210,7 @@ func TestRunningHubEntryIntegrationWorkbench(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored := f.assertCompleted(t, task.ID, "plus")
+	stored := f.assertCompleted(t, task.ID, "default")
 	if stored.WorkbenchKind != WorkbenchKindVideo || stored.Operation != "reference_to_video" {
 		t.Fatalf("workbench identity lost: %#v", stored)
 	}
@@ -232,12 +232,45 @@ func TestRunningHubEntryIntegrationCanvas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored := f.assertCompleted(t, task.ID, "ultra")
+	stored := f.assertCompleted(t, task.ID, "default")
 	if stored.ProjectID != canvas.ID {
 		t.Fatal("canvas task lost project association")
 	}
 	if context := taskSummaryForOutput(*stored).ClientContext; context == nil || context.NodeID != "video-node" {
 		t.Fatalf("canvas output lost originating node: %#v", context)
+	}
+}
+
+func TestRunningHubRefundedFixedRequestRecoveryChargesOnce(t *testing.T) {
+	f := newRunningHubEntryFixture(t, "standard")
+	created, err := f.s.CreateTask("user", f.canvasRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := f.s.repo.Task(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.repo.RefundBillingOrder(task.BillingOrderID, "awaiting confirmation"); err != nil {
+		t.Fatal(err)
+	}
+	task.ProviderRequestID = "entry-upstream-task"
+	task.ResultJSON = `{"mode":"video","usage":{"taskCostTime":81.1}}`
+	for range 2 {
+		if err := f.s.settleRecoveredBilling(task, task.ProviderRequestID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	order, err := f.s.repo.BillingOrder(task.BillingOrderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := f.s.repo.CreditAccount(task.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.Status != model.BillingStatusSettled || order.Quantity != 1 || order.CostQuantity != 82 || order.ActualAmountMicrocredits != f.sale || account.AvailableMicrocredits != 10_000_000-f.sale || account.ReservedMicrocredits != 0 {
+		t.Fatalf("refunded fixed price order did not settle once: %#v %#v", order, account)
 	}
 }
 
@@ -295,6 +328,24 @@ func TestRunningHubMissingCancelledTaskRequiresReviewWithoutRefund(t *testing.T)
 	}
 }
 
+func TestRunningHubEntryRejectsInsufficientFixedPriceBeforeUpstream(t *testing.T) {
+	f := newRunningHubEntryFixture(t, "default")
+	if err := f.db.Model(&model.CreditAccount{}).Where("user_id = ?", "user").Update("available_microcredits", f.sale-1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.CreateTask("user", f.canvasRequest()); err == nil {
+		t.Fatal("task admission succeeded with less than the fixed per-request price")
+	}
+	if err := f.s.taskWorker().processNextTask(); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.paths) != 0 || len(f.submits) != 0 {
+		t.Fatalf("insufficient balance reached RunningHub: paths=%v submits=%#v", f.paths, f.submits)
+	}
+}
+
 func TestRunningHubEntryIntegrationDrama(t *testing.T) {
 	f := newRunningHubEntryFixture(t, "plus")
 	settings := parseDramaSettings("{}")
@@ -345,7 +396,7 @@ func TestRunningHubEntryIntegrationDrama(t *testing.T) {
 	if err != nil || len(jobs) != 1 {
 		t.Fatalf("drama did not dispatch real generation task: %#v %v", jobs, err)
 	}
-	task := f.assertCompleted(t, jobs[0].TaskID, "plus")
+	task := f.assertCompleted(t, jobs[0].TaskID, "default")
 	var upstreamPrompt string
 	for _, node := range f.submits[0].NodeInfoList {
 		if node.NodeID == "263" && node.FieldName == "text" {
@@ -376,8 +427,8 @@ func TestRunningHubEntryIntegrationDrama(t *testing.T) {
 	if err != nil || segment.VideoStatus != model.DramaMediaReady || segment.VideoResourceID != resourceID || segment.TailFrameResourceID != f.image.ID {
 		t.Fatalf("drama output not written back: %#v %v", segment, err)
 	}
-	if jobs[0].Status != model.DramaJobSucceeded || jobs[0].CostMicrocredits != f.sale*82 || p.SpentMicrocredits != f.sale*82 {
-		t.Fatalf("drama budget used reservation instead of runtime: job=%#v production=%#v", jobs[0], p)
+	if jobs[0].Status != model.DramaJobSucceeded || jobs[0].CostMicrocredits != f.sale || p.SpentMicrocredits != f.sale {
+		t.Fatalf("drama budget did not use the fixed per-request sale: job=%#v production=%#v", jobs[0], p)
 	}
 }
 

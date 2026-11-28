@@ -280,12 +280,8 @@ func runningHubResolutionMegapixels(value string) (float64, error) {
 
 func runningHubInstanceType(value string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "plus":
-		return "plus", nil
-	case "ultra":
-		return "ultra", nil
-	case "", "standard", "default":
+	case "", "standard", "default", "plus", "ultra":
 		return "default", nil
 	}
-	return "", errors.New("RunningHub 执行档位仅支持 Standard、Plus、Ultra")
+	return "", errors.New("RunningHub 执行档位仅支持 Standard（24G）")
 }

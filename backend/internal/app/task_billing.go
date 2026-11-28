@@ -69,6 +69,18 @@ func (c *taskBillingCoordinator) SettleBillingWithAudioDuration(orderID string, 
 	return errors.New("计费仓库不支持实际时长结算，需人工核对")
 }
 
+func (c *taskBillingCoordinator) SettleBillingWithRunningHubRuntime(orderID string, providerRequestID string, durationMs int64) error {
+	if orderID == "" {
+		return nil
+	}
+	if repo, ok := c.repo.(interface {
+		SettleBillingOrderWithRunningHubRuntime(string, string, int64) error
+	}); ok {
+		return repo.SettleBillingOrderWithRunningHubRuntime(orderID, providerRequestID, durationMs)
+	}
+	return errors.New("计费仓库不支持 RunningHub 实际运行时间结算")
+}
+
 func (c *taskBillingCoordinator) RestoreRefundedBilling(orderID string, providerRequestID string) error {
 	if orderID == "" {
 		return nil

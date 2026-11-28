@@ -412,7 +412,7 @@ func (s *Service) resolveBillingOrder(actor *model.User, id string, action strin
 	if order.Status != model.BillingStatusUncertain && order.Status != model.BillingStatusRunning && order.Status != model.BillingStatusReserved {
 		return nil, BadAuthRequest("当前订单不需要人工核对")
 	}
-	if order.Status == model.BillingStatusUncertain && order.Capability == "video" && order.BillingMode == "per_second" && order.RefundedAt != nil {
+	if order.IsRefundedRuntimeReview() {
 		switch action {
 		case "settle":
 			task, taskErr := s.repo.Task(order.TaskID)
@@ -549,9 +549,6 @@ func (s *Service) newLogicalModelBillingOrder(userID string, task *model.Task, i
 	if logicalModel.PricePolicy != "unified" {
 		return nil, BadAuthRequest("当前模型价格策略无效")
 	}
-	if channelModel.Protocol == model.ChannelInterfaceRunningHubVideo && logicalModel.BillingMode != "per_second" {
-		return nil, BadAuthRequest("RunningHub 视频仅支持按实际运行时间计费，请配置按秒价格")
-	}
 	// 统一价以积分配置，只叠加分组倍率（不叠加全局积分策略倍率，保持统一价语义）。
 	access, err := s.userGroupAccess(userID)
 	if err != nil {
@@ -637,10 +634,10 @@ func (s *Service) newLogicalModelBillingOrder(userID string, task *model.Task, i
 	if err != nil {
 		return nil, err
 	}
-	if channelModel.Protocol == model.ChannelInterfaceRunningHubVideo && costTier != nil && costTier.BillingMode != "per_second" {
-		return nil, BadAuthRequest("RunningHub 视频成本仅支持按实际运行时间核算，请配置按秒价格")
+	if err := validateRunningHubSale(channelModel.Protocol, order.BillingMode, order.AmountMicrocredits); err != nil {
+		return nil, err
 	}
-	snapshotCreditCost(order, costTier, requestedBillingQuantity(capability, config), tokenEstimate)
+	snapshotChannelCreditCost(order, channelModel.Protocol, costTier, requestedBillingQuantity(capability, config), tokenEstimate)
 	if order.CostBillingMode == imagebilling.Mode && order.BillingMode != imagebilling.Mode {
 		order.ImageInputImages, order.ImageMaxOutputImages, err = imageBillingReservation(intent)
 		if err != nil {
@@ -710,9 +707,6 @@ func (s *Service) newBillingOrderWithPriceTierAt(pricedAt time.Time, userID stri
 	}
 	if tier == nil {
 		return nil, BadAuthRequest("当前模型尚未配置所选规格的用户积分价格")
-	}
-	if item.Protocol == model.ChannelInterfaceRunningHubVideo && tier.BillingMode != "per_second" {
-		return nil, BadAuthRequest("RunningHub 视频仅支持按实际运行时间计费，请配置按秒价格")
 	}
 	quantity := int64(1)
 	amount := int64(0)
@@ -849,7 +843,10 @@ func (s *Service) newBillingOrderWithPriceTierAt(pricedAt time.Time, userID stri
 	if order.TokenPriceRulesJSON, err = model.EncodeBillingTokenPriceRules(tokenRules); err != nil {
 		return nil, err
 	}
-	snapshotCreditCost(order, tier, requestedQuantity, costEstimate)
+	if err := validateRunningHubSale(item.Protocol, order.BillingMode, order.AmountMicrocredits); err != nil {
+		return nil, err
+	}
+	snapshotChannelCreditCost(order, item.Protocol, tier, requestedQuantity, costEstimate)
 	if order.CostBillingMode == imagebilling.Mode && order.BillingMode != imagebilling.Mode {
 		if len(intents) == 0 {
 			return nil, BadAuthRequest("图片用量成本缺少实际请求规格")
@@ -957,6 +954,13 @@ func (s *Service) channelModelPriceTierForBilling(channelModel model.ChannelMode
 		intent = normalizeImageSizeIntent(spec, intent)
 	}
 	if priceTierID != "" {
+		if channelModel.Protocol == model.ChannelInterfaceRunningHubVideo {
+			matched := channelModelPriceTierForIntent(channelModel, intent)
+			if matched == nil || matched.ID != priceTierID {
+				return nil, BadAuthRequest("RunningHub 价格档与请求规格不一致，请重新选择")
+			}
+			return matched, nil
+		}
 		for index := range channelModel.PriceTiers {
 			tier := &channelModel.PriceTiers[index]
 			if tier.ID == priceTierID && tier.Enabled && tier.PriceConfigured {

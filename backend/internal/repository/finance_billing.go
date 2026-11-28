@@ -333,14 +333,18 @@ func (r *Repository) MarkBillingUncertain(id string, errorText string) error {
 }
 
 func (r *Repository) SettleBillingOrder(id string, providerRequestID string) error {
-	return r.settleBillingOrder(id, providerRequestID, nil)
+	return r.settleBillingOrder(id, providerRequestID, nil, false)
 }
 
 func (r *Repository) SettleBillingOrderWithAudioDuration(id string, providerRequestID string, durationMs int64) error {
-	return r.settleBillingOrder(id, providerRequestID, &durationMs)
+	return r.settleBillingOrder(id, providerRequestID, &durationMs, false)
 }
 
-func (r *Repository) settleBillingOrder(id string, providerRequestID string, audioDurationMs *int64) error {
+func (r *Repository) SettleBillingOrderWithRunningHubRuntime(id string, providerRequestID string, durationMs int64) error {
+	return r.settleBillingOrder(id, providerRequestID, &durationMs, true)
+}
+
+func (r *Repository) settleBillingOrder(id string, providerRequestID string, audioDurationMs *int64, allowFixedRequestVideo bool) error {
 	var observedUsage *BillingUsage
 	var observedUsageSource string
 	var observedActual int64
@@ -360,8 +364,11 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 		if order.Status == model.BillingStatusRefunded {
 			return errors.New("billing order already refunded")
 		}
-		if order.Status == model.BillingStatusUncertain && order.Capability == "video" && order.BillingMode == "per_second" && order.RefundedAt != nil {
+		if order.IsRefundedRuntimeReview() {
 			return ErrBillingStateConflict
+		}
+		if allowFixedRequestVideo && !order.SupportsVideoRuntimeSettlement() {
+			return errors.New("invalid RunningHub video billing snapshot")
 		}
 		defer func() {
 			if settleErr == nil {
@@ -472,7 +479,9 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 		supplement := int64(0)
 		// 音频始终按实测时长结算；视频处理任务（画质增强等）由调用方显式传入输出时长，
 		// 普通视频生成仍传 nil，保持按请求时长一次扣定。
-		if order.BillingMode == "per_second" && (order.Capability == "audio" || (order.Capability == "video" && audioDurationMs != nil)) {
+		measuredAudio := order.BillingMode == "per_second" && order.Capability == "audio"
+		measuredVideo := order.Capability == "video" && audioDurationMs != nil && (order.BillingMode == "per_second" || allowFixedRequestVideo && order.BillingMode == "fixed_request")
+		if measuredAudio || measuredVideo {
 			mediaLabel := "音频"
 			if order.Capability == "video" {
 				mediaLabel = "视频"
@@ -481,14 +490,16 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 				return errors.New(mediaLabel + "实际时长不可用，无法按秒结算")
 			}
 			quantity = (*audioDurationMs + 999) / 1000
-			if order.Capability == "video" && order.ReferenceVideoBilled {
+			if order.Capability == "video" && order.BillingMode == "per_second" && order.ReferenceVideoBilled {
 				// 与预留一致：开启参考视频计费的按秒订单 = 输出秒数 + 后端实测的参考视频秒数。
 				quantity += (order.ReferenceVideoMillis + 999) / 1000
 			}
-			var err error
-			actual, err = audioBillingAmount(order.UnitPriceMicrocredits, quantity, order.MultiplierBasisPoints)
-			if err != nil {
-				return err
+			if order.BillingMode == "per_second" {
+				var err error
+				actual, err = audioBillingAmount(order.UnitPriceMicrocredits, quantity, order.MultiplierBasisPoints)
+				if err != nil {
+					return err
+				}
 			}
 			if billingChargeLimitApplies(order) && actual > order.ChargeLimitMicrocredits {
 				return errors.New(mediaLabel + "实际费用超过本次授权上限，需人工核对")
@@ -522,6 +533,9 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 			if order.CostBillingMode == "per_second" {
 				costQuantity = quantity
 			}
+			if order.BillingMode == "fixed_request" {
+				quantity = order.Quantity
+			}
 			orderUpdates := map[string]any{"status": model.BillingStatusSettled, "quantity": quantity, "actual_amount_microcredits": actual, "uncapped_amount_microcredits": actual, "refunded_amount_microcredits": refund, "cost_quantity": costQuantity, "settled_at": &now, "updated_at": now}
 			if providerRequestID != "" {
 				orderUpdates["provider_request_id"] = providerRequestID
@@ -529,7 +543,12 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 			if err := updateBillingOrderState(tx, order, orderUpdates); err != nil {
 				return err
 			}
-			note := mediaLabel + "按实际输出时长结算"
+			note := mediaLabel + "按实际运行时长记录"
+			if order.BillingMode == "fixed_request" {
+				note += "，用户售价按次结算"
+			} else {
+				note = mediaLabel + "按实际输出时长结算"
+			}
 			if supplement > 0 {
 				note += "，已补扣差额"
 			}
@@ -662,8 +681,8 @@ func (r *Repository) restoreRefundedBillingOrder(id string, providerRequestID st
 			return err
 		}
 		if durationMs != nil {
-			if order.Capability != "video" || order.BillingMode != "per_second" {
-				return errors.New("runtime recovery requires per-second video billing")
+			if !order.SupportsVideoRuntimeSettlement() {
+				return errors.New("runtime recovery requires supported RunningHub video billing")
 			}
 			if order.ProviderRequestID != "" && order.ProviderRequestID != providerRequestID {
 				return errors.New("restored billing provider task ID mismatch")
@@ -685,7 +704,7 @@ func (r *Repository) restoreRefundedBillingOrder(id string, providerRequestID st
 			return errors.New("团队订单已退款，恢复作品不能自动重新扣款，请人工核对")
 		}
 		if durationMs != nil && (order.ResolvedBy != "" || (releasedReview &&
-			((*durationMs+999)/1000 != order.Quantity || (order.CostBillingMode == "per_second" && order.CostQuantity != order.Quantity)))) {
+			((order.BillingMode == "per_second" && (*durationMs+999)/1000 != order.Quantity) || (order.CostBillingMode == "per_second" && order.CostQuantity != (*durationMs+999)/1000)))) {
 			return ErrBillingStateConflict
 		}
 		if durationMs == nil && order.BillingMode != "token" {
@@ -698,10 +717,12 @@ func (r *Repository) restoreRefundedBillingOrder(id string, providerRequestID st
 		quantity := order.Quantity
 		if durationMs != nil {
 			quantity = (*durationMs + 999) / 1000
-			var err error
-			actual, err = audioBillingAmount(order.UnitPriceMicrocredits, quantity, order.MultiplierBasisPoints)
-			if err != nil {
-				return err
+			if order.BillingMode == "per_second" {
+				var err error
+				actual, err = audioBillingAmount(order.UnitPriceMicrocredits, quantity, order.MultiplierBasisPoints)
+				if err != nil {
+					return err
+				}
 			}
 			if err := validateBillingChargeLimit(order, actual); err != nil {
 				return err
@@ -775,8 +796,11 @@ func (r *Repository) restoreRefundedBillingOrder(id string, providerRequestID st
 				}
 				if account.AvailableMicrocredits < actual {
 					reviewUpdates := map[string]any{"status": model.BillingStatusUncertain,
-						"error":    "实际运行时间补扣余额不足，已退款积分不再冻结，需人工核对",
-						"quantity": quantity, "provider_request_id": providerRequestID, "updated_at": time.Now()}
+						"error":               "实际运行时间补扣余额不足，已退款积分不再冻结，需人工核对",
+						"provider_request_id": providerRequestID, "updated_at": time.Now()}
+					if order.BillingMode == "per_second" {
+						reviewUpdates["quantity"] = quantity
+					}
 					if order.CostBillingMode == "per_second" {
 						reviewUpdates["cost_quantity"] = quantity
 					}
@@ -813,7 +837,9 @@ func (r *Repository) restoreRefundedBillingOrder(id string, providerRequestID st
 			orderUpdates["provider_request_id"] = providerRequestID
 		}
 		if durationMs != nil {
-			orderUpdates["quantity"] = quantity
+			if order.BillingMode == "per_second" {
+				orderUpdates["quantity"] = quantity
+			}
 			if order.CostBillingMode == "per_second" {
 				orderUpdates["cost_quantity"] = quantity
 			}
@@ -838,8 +864,10 @@ func (r *Repository) restoreRefundedBillingOrder(id string, providerRequestID st
 		}
 
 		consumeNote := "人工查询确认上游成功，退款订单重新扣费"
-		if durationMs != nil {
+		if durationMs != nil && order.BillingMode == "per_second" {
 			consumeNote = "确认上游成功，退款订单按实际运行时间重新扣费"
+		} else if durationMs != nil {
+			consumeNote = "确认上游成功，退款订单按原单次售价重新扣费"
 		}
 		if usageSource == billingUsageSourceVideoFormula {
 			consumeNote += "；按提交时的视频 Token 公式快照结算"
@@ -903,7 +931,7 @@ func (r *Repository) CloseRefundedRuntimeBillingReview(id, actorUserID, note str
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&order, "id = ?", id).Error; err != nil {
 			return err
 		}
-		if order.Capability != "video" || order.BillingMode != "per_second" ||
+		if !order.SupportsVideoRuntimeSettlement() ||
 			order.RefundedAt == nil || order.ActualAmountMicrocredits != 0 || order.SettledAt != nil || order.RefundedAmountMicrocredits != order.AmountMicrocredits {
 			return ErrBillingStateConflict
 		}
@@ -937,7 +965,7 @@ func (r *Repository) RefundBillingOrder(id string, errorText string) error {
 		// 上游 v1.8.3 把退款主体抽成 refundBillingOrder，手动入口本身不再校验业务状态。
 		// 二开的不确定单防护必须留在这里：按秒计费的视频订单在运行时恢复被判定为
 		// 余额不足后，预留已经退回过，再次手动退款会动用其他订单的冻结积分。
-		if order.Status == model.BillingStatusUncertain && order.Capability == "video" && order.BillingMode == "per_second" && order.RefundedAt != nil {
+		if order.IsRefundedRuntimeReview() {
 			return ErrBillingStateConflict
 		}
 		return refundBillingOrder(tx, order, errorText)
@@ -976,7 +1004,7 @@ func (r *Repository) AutoRefundBillingOrder(id string, note string) (bool, error
 		}
 		// An uncertain runtime recovery may already have returned the entire
 		// reservation. Never refund it again using another order's held credits.
-		if order.Status == model.BillingStatusUncertain && order.Capability == "video" && order.BillingMode == "per_second" && order.RefundedAt != nil {
+		if order.IsRefundedRuntimeReview() {
 			return ErrBillingStateConflict
 		}
 		if err := refundBillingOrder(tx, order, note); err != nil {

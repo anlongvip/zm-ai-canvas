@@ -85,17 +85,7 @@ export function ModelCapabilityEditor({ value, onChange, protocol, definition, c
             <VideoOperationOptions profile={profile} suggested={preset?.operations} disabled={disabled} update={update} />
             {protocol === "runninghub-workflow-video" ? (
                 <Field label="算力档位（与此模型价格对应）">
-                    <Select
-                        className="w-full"
-                        disabled={disabled}
-                        value={profile.executionTier === "default" ? "standard" : profile.executionTier || "standard"}
-                        options={[
-                            { label: "Standard", value: "standard" },
-                            { label: "Plus", value: "plus" },
-                            { label: "Ultra", value: "ultra" },
-                        ]}
-                        onChange={(executionTier) => update({ executionTier })}
-                    />
+                    <Select className="w-full" disabled value="standard" options={[{ label: "Standard（24G）", value: "standard" }]} />
                 </Field>
             ) : null}
         </>

@@ -13,7 +13,7 @@ test("RunningHub drafts expose the published reference limits and megapixel reso
     assert.equal(profile.references.maxImages, 9);
     assert.equal(profile.references.maxVideos, 3);
     assert.equal(profile.references.maxAudios, 3);
-    assert.equal(profile.duration.max, 20);
+    assert.equal(profile.duration.max, 15);
     assert.equal(profile.duration.default, 5);
     assert.deepEqual(profile.resolutions, ["0.5", "0.9", "1.5", "2.0"]);
     assert.equal(profile.defaultResolution, "0.9");

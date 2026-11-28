@@ -2,6 +2,11 @@ import type { ChannelModel, ChannelModelPriceTier, ChannelModelRepriceInput } fr
 
 const validPrice = (value: number | undefined): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+function assertBatchRepricingUnits(items: ChannelModel[]) {
+    const runningHub = items.find((item) => item.protocol === "runninghub-workflow-video");
+    if (runningHub) throw new Error(`${runningHub.displayName || runningHub.modelKey}：RunningHub 成本按秒、售价按次，不能使用批量加价率，请在模型价格中单独设置每次售价`);
+}
+
 export function formatModelPrice(value: number | undefined) {
     return validPrice(value) ? (value / 1_000_000).toLocaleString("zh-CN", { maximumFractionDigits: 6 }) : "—";
 }
@@ -43,6 +48,7 @@ export function previewModelRepricing(items: ChannelModel[], markupPercent: numb
     }
     if (!items.length || items.length > 100) throw new Error("请选择 1 到 100 个模型");
     if (!Number.isInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > 6) throw new Error("请选择保留 0 到 6 位小数");
+    assertBatchRepricingUnits(items);
     const multiplier = BigInt(10_000 + Math.round(markupPercent * 100));
     const quantum = BigInt(10 ** (6 - decimalPlaces));
     return items.map((item) => {
@@ -95,6 +101,7 @@ export type ModelRepriceRow = {
 };
 
 export function modelRepriceRows(items: ChannelModel[]): ModelRepriceRow[] {
+    assertBatchRepricingUnits(items);
     return items.flatMap((model) =>
         model.priceTiers
             .filter((tier) => tier.enabled)
@@ -113,6 +120,7 @@ export function modelRepriceRows(items: ChannelModel[]): ModelRepriceRow[] {
 
 export function modelRepricePayload(items: ChannelModel[], rows: ModelRepriceRow[]): ChannelModelRepriceInput[] {
     if (!items.length || items.length > 100) throw new Error("请选择 1 到 100 个模型");
+    assertBatchRepricingUnits(items);
     const byKey = new Map(rows.map((row) => [row.key, row]));
     return items.map((item) => {
         const tiers = item.priceTiers.filter((tier) => tier.enabled);

@@ -51,6 +51,20 @@ type TaskBillingSummary struct {
 	Status                     BillingStatus `json:"status"`
 }
 
+func (o *BillingOrder) IsRefundedRuntimeReview() bool {
+	return o.Status == BillingStatusUncertain && o.RefundedAt != nil && o.Capability == "video" && (o.BillingMode == "per_second" || o.BillingMode == "fixed_request" && o.CostBillingMode == "per_second")
+}
+
+func (o *BillingOrder) SupportsVideoRuntimeSettlement() bool {
+	if o.Capability != "video" {
+		return false
+	}
+	if o.BillingMode == "per_second" {
+		return true
+	}
+	return o.BillingMode == "fixed_request" && o.Quantity == 1 && o.AmountMicrocredits > 0 && o.CostBillingMode == "per_second"
+}
+
 type BillingOrder struct {
 	ImagePricing         *ImagePricing      `json:"imagePricing,omitempty" gorm:"serializer:json;type:text"`
 	ImageUsage           *ImageBillingUsage `json:"imageUsage,omitempty" gorm:"serializer:json;type:text"`

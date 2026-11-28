@@ -29,6 +29,21 @@ func validateCreditCostPricing(capability, billingMode string, cost model.Credit
 	return validateTokenPrices(capability, cost.InputTokenPriceMicrocredits, cost.OutputTokenPriceMicrocredits, cost.CachedTokenPriceMicrocredits, cost.CacheWriteTokenPriceMicrocredits)
 }
 
+func validateRunningHubSale(protocol model.ChannelInterfaceType, mode string, amount int64) error {
+	if protocol == model.ChannelInterfaceRunningHubVideo && (mode != "fixed_request" || amount <= 0) {
+		return BadAuthRequest("RunningHub 视频需配置大于 0 的按次售价后才能提交")
+	}
+	return nil
+}
+
+func snapshotChannelCreditCost(order *model.BillingOrder, protocol model.ChannelInterfaceType, tier *model.ChannelModelPriceTier, quantity int64, estimate tokenBillingEstimate) {
+	snapshotCreditCost(order, tier, quantity, estimate)
+	if protocol == model.ChannelInterfaceRunningHubVideo {
+		order.CostBillingMode = "per_second"
+		order.CostQuantity = quantity
+	}
+}
+
 func snapshotCreditCost(order *model.BillingOrder, tier *model.ChannelModelPriceTier, quantity int64, estimate tokenBillingEstimate) {
 	if tier == nil {
 		return

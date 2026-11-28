@@ -238,6 +238,9 @@ func (s *Service) QuoteLogicalModel(userID string, logicalModelID string, intent
 	if amount < 0 {
 		return nil, BadAuthRequest("当前模型尚未配置有效的用户价格")
 	}
+	if err := validateRunningHubSale(routed.ChannelModel.Protocol, routed.LogicalModel.BillingMode, amount); err != nil {
+		return nil, err
+	}
 	quote := &LogicalModelQuote{
 		LogicalModelID:     routed.LogicalModel.ID,
 		BillingMode:        routed.LogicalModel.BillingMode,

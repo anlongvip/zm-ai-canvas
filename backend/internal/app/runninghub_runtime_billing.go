@@ -16,7 +16,7 @@ var _ runningHubRuntimeTaskSettlement = (*Service)(nil)
 var _ runningHubTaskFailureReview = (*Service)(nil)
 
 // Runtime and upstream spend are retained in the result or the original poll
-// log. Only runtime determines the customer's charge; coins are not credits.
+// log. Runtime measures supplier cost; new orders sell one fixed-price job.
 func (s *Service) settleRunningHubRuntimeBilling(task model.Task, providerRequestID string) (bool, error) {
 	return s.settleRunningHubRuntimeBillingWithReview(task, providerRequestID, false)
 }
@@ -43,8 +43,8 @@ func (s *Service) settleRunningHubRuntimeBillingWithReview(task model.Task, prov
 	if order.UserID != task.UserID || order.TaskID != task.ID {
 		return true, errors.New("任务与计费订单归属不一致")
 	}
-	if order.BillingMode != "per_second" {
-		return true, errors.New("RunningHub 视频必须按实际运行时间计费，请核对订单计费模式")
+	if order.BillingMode != "per_second" && order.BillingMode != "fixed_request" {
+		return true, errors.New("RunningHub 视频计费模式无效")
 	}
 	if order.CostPricing.Configured && order.CostBillingMode != "per_second" {
 		return true, errors.New("RunningHub 成本必须按实际运行时间核算，请核对订单成本模式")
@@ -79,7 +79,7 @@ func (s *Service) settleRunningHubRuntimeBillingWithReview(task model.Task, prov
 	if order.Status == model.BillingStatusRefunded || releasedReview {
 		return true, billing.RestoreRefundedBillingWithRuntime(task.BillingOrderID, providerRequestID, durationMs)
 	}
-	return true, billing.SettleBillingWithAudioDuration(task.BillingOrderID, providerRequestID, durationMs)
+	return true, billing.SettleBillingWithRunningHubRuntime(task.BillingOrderID, providerRequestID, durationMs)
 }
 
 func (s *Service) isRunningHubBillingTask(task model.Task) (bool, error) {

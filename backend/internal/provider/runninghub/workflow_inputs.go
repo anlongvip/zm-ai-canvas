@@ -25,8 +25,8 @@ func BuildVideoInputs(input VideoInputs) ([]NodeInput, error) {
 	if prompt == "" {
 		return nil, fmt.Errorf("视频提示词不能为空")
 	}
-	if input.Duration < 1 || input.Duration > 20 {
-		return nil, fmt.Errorf("视频时长必须在 1 到 20 秒之间")
+	if input.Duration < 1 || input.Duration > 15 {
+		return nil, fmt.Errorf("视频时长必须在 1 到 15 秒之间")
 	}
 	if strings.TrimSpace(input.AspectRatio) == "" {
 		return nil, fmt.Errorf("视频画幅不能为空")
